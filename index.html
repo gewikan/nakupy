@@ -1,512 +1,482 @@
 <!DOCTYPE html>
 <html lang="sk">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Teplota – Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg:        #070d1a;
-    --bg2:       #0c1525;
-    --bg3:       #111e33;
-    --border:    rgba(50,100,180,0.18);
-    --text:      #c8daf5;
-    --muted:     #3a5a80;
-    --mono:      'DM Mono', monospace;
-    --sans:      'DM Sans', sans-serif;
-    --blue:      #4a9eff;
-    --teal:      #30d9a0;
-    --amber:     #f5a623;
-    --purple:    #9b7ff5;
-    --red:       #ff5c5c;
-    --green:     #30d9a0;
-  }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#1B5E20" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Nákupy AI" />
+  <title>Nákupný Zoznam AI</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon.svg" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  html, body {
-    width: 100vw; height: 100vh;
-    overflow: hidden;
-    background: var(--bg);
-    font-family: var(--sans);
-    color: var(--text);
-    -webkit-font-smoothing: antialiased;
-  }
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; overscroll-behavior: none; }
+    body { font-family: 'Nunito', 'Segoe UI', sans-serif; background: #F5F3EF; }
+    #root { max-width: 480px; margin: 0 auto; min-height: 100vh; }
 
-  /* ── SCANLINE EFFECT ── */
-  body::after {
-    content: '';
-    position: fixed; inset: 0;
-    background: repeating-linear-gradient(
-      0deg,
-      transparent,
-      transparent 3px,
-      rgba(0,0,0,0.03) 3px,
-      rgba(0,0,0,0.03) 4px
-    );
-    pointer-events: none;
-    z-index: 100;
-  }
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number] { -moz-appearance: textfield; }
 
-  .layout {
-    display: grid;
-    grid-template-rows: 56px 1fr 44px;
-    height: 100vh;
-    padding: 0;
-  }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse-bar {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(260%); }
+    }
+    .slide-in { animation: slideIn 0.28s ease both; }
 
-  /* ── HEADER ── */
-  header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 24px;
-    border-bottom: 0.5px solid var(--border);
-    background: var(--bg2);
-  }
-
-  .logo {
-    display: flex; align-items: center; gap: 10px;
-  }
-  .logo-icon {
-    width: 22px; height: 22px;
-    border: 1.5px solid var(--blue);
-    border-radius: 4px;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .logo-icon::after {
-    content: '';
-    width: 8px; height: 8px;
-    background: var(--blue);
-    border-radius: 50%;
-    box-shadow: 0 0 6px var(--blue);
-  }
-  .logo-text {
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--blue);
-  }
-
-  .header-right {
-    display: flex; align-items: center; gap: 20px;
-  }
-  .clock {
-    font-family: var(--mono);
-    font-size: 18px;
-    font-weight: 300;
-    color: var(--text);
-    letter-spacing: 0.05em;
-  }
-  .date-txt {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 0.08em;
-  }
-
-  /* ── MAIN GRID ── */
-  main {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 16px;
-    padding: 16px 24px;
-  }
-
-  /* ── SENSOR CARD ── */
-  .card {
-    background: var(--bg2);
-    border: 0.5px solid var(--border);
-    border-radius: 14px;
-    padding: 20px 22px 18px;
-    position: relative;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    animation: fadeIn 0.4s ease both;
-    cursor: default;
-    transition: border-color 0.2s;
-  }
-  .card:hover { border-color: rgba(74,158,255,0.3); }
-  .card::before {
-    content: '';
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    height: 2px;
-    background: var(--accent, var(--blue));
-  }
-
-  /* subtle corner decoration */
-  .card::after {
-    content: '';
-    position: absolute;
-    bottom: 0; right: 0;
-    width: 60px; height: 60px;
-    border-top: 0.5px solid var(--border);
-    border-left: 0.5px solid var(--border);
-    border-radius: 14px 0 0 0;
-  }
-
-  .card-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 8px;
-  }
-
-  .card-label {
-    font-size: 10px;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--muted);
-    font-weight: 500;
-  }
-
-  .card-name {
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--text);
-    margin-top: 2px;
-  }
-
-  .status-badge {
-    font-family: var(--mono);
-    font-size: 10px;
-    padding: 3px 8px;
-    border-radius: 20px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    background: rgba(48,217,160,0.1);
-    color: var(--teal);
-    border: 0.5px solid rgba(48,217,160,0.25);
-  }
-  .status-badge.warn {
-    background: rgba(245,166,35,0.1);
-    color: var(--amber);
-    border-color: rgba(245,166,35,0.25);
-  }
-  .status-badge.error {
-    background: rgba(255,92,92,0.1);
-    color: var(--red);
-    border-color: rgba(255,92,92,0.25);
-  }
-  .status-badge.demo {
-    background: rgba(155,127,245,0.1);
-    color: var(--purple);
-    border-color: rgba(155,127,245,0.25);
-  }
-  .status-badge.loading {
-    background: rgba(74,158,255,0.1);
-    color: var(--blue);
-    border-color: rgba(74,158,255,0.25);
-  }
-
-  /* Temperature big display */
-  .temp-row {
-    display: flex;
-    align-items: baseline;
-    gap: 4px;
-    margin-top: 6px;
-  }
-  .temp-val {
-    font-family: var(--mono);
-    font-size: 52px;
-    font-weight: 300;
-    line-height: 1;
-    transition: color 0.6s ease;
-  }
-  .temp-unit {
-    font-family: var(--mono);
-    font-size: 22px;
-    font-weight: 300;
-    color: var(--muted);
-    align-self: flex-start;
-    margin-top: 6px;
-  }
-
-  .divider {
-    height: 0.5px;
-    background: var(--border);
-    margin: 12px 0 10px;
-  }
-
-  .metrics-row {
-    display: flex;
-    gap: 20px;
-  }
-  .metric {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .metric-label {
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-  .metric-val {
-    font-family: var(--mono);
-    font-size: 16px;
-    font-weight: 400;
-    color: var(--text);
-  }
-
-  /* ── FOOTER ── */
-  footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 24px;
-    border-top: 0.5px solid var(--border);
-    background: var(--bg2);
-  }
-
-  .footer-left {
-    display: flex; align-items: center; gap: 16px;
-  }
-
-  .live-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--teal);
-    animation: blink 2.5s ease-in-out infinite;
-  }
-  .live-dot.paused { background: var(--muted); animation: none; }
-  .live-dot.error  { background: var(--red); animation: none; }
-
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50%       { opacity: 0.25; }
-  }
-
-  .status-txt {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 0.06em;
-  }
-
-  .refresh-btn {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--muted);
-    background: transparent;
-    border: 0.5px solid var(--border);
-    border-radius: 6px;
-    padding: 6px 16px;
-    cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
-    -webkit-tap-highlight-color: transparent;
-  }
-  .refresh-btn:hover, .refresh-btn:active {
-    color: var(--blue);
-    border-color: rgba(74,158,255,0.4);
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  .card:nth-child(1) { animation-delay: 0.05s; }
-  .card:nth-child(2) { animation-delay: 0.12s; }
-  .card:nth-child(3) { animation-delay: 0.19s; }
-  .card:nth-child(4) { animation-delay: 0.26s; }
-
-  /* ── SPINNER ── */
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .spin { display: inline-block; animation: spin 1s linear infinite; }
-
-  /* ── NULL STATE ── */
-  .null-val {
-    color: var(--muted) !important;
-    font-size: 40px !important;
-  }
-</style>
+    button:active { opacity: 0.82; }
+    .fab:active { transform: translateX(-50%) scale(0.93) !important; }
+  </style>
 </head>
 <body>
-<div class="layout">
+<div id="root"></div>
 
-  <header>
-    <div class="logo">
-      <div class="logo-icon"></div>
-      <span class="logo-text">Monitorovanie teploty</span>
-    </div>
-    <div class="header-right">
-      <div style="text-align:right">
-        <div class="clock" id="clock">--:--:--</div>
-        <div class="date-txt" id="dateTxt">—</div>
+<script type="text/babel" data-presets="react">
+  const { useState, useRef, useEffect } = React;
+
+  /* ── Constants ─────────────────────────────────────── */
+  const STORES = [
+    { id: "lidl",     name: "Lidl",       color: "#FFD700", bg: "#003087" },
+    { id: "billa",    name: "Billa",      color: "#fff",    bg: "#CC0000" },
+    { id: "kaufland", name: "Kaufland",   color: "#fff",    bg: "#E30613" },
+    { id: "tesco",    name: "Tesco",      color: "#fff",    bg: "#00539F" },
+    { id: "albert",   name: "Albert",     color: "#fff",    bg: "#E2001A" },
+    { id: "coop",     name: "Coop",       color: "#fff",    bg: "#004B87" },
+    { id: "fresh",    name: "Fresh",      color: "#fff",    bg: "#2E7D32" },
+    { id: "iny",      name: "Iný obchod", color: "#fff",    bg: "#6B7280" },
+  ];
+
+  const storeFromText = (text) => {
+    if (!text) return null;
+    const t = text.toLowerCase();
+    return STORES.find(s => t.includes(s.name.toLowerCase())) || null;
+  };
+
+  const fmt = (p) =>
+    p != null ? p.toFixed(2).replace(".", ",") + "\u00a0€" : "—";
+
+  const loadItems = () => {
+    try { return JSON.parse(localStorage.getItem("nz_items") || "[]"); } catch { return []; }
+  };
+  const saveItems = (arr) => {
+    // strip imageUrl from storage to save space (keep thumbnails small)
+    const lite = arr.map(i => ({ ...i, imageUrl: i.imageUrl ? i.imageUrl.substring(0, 2000) : null }));
+    try { localStorage.setItem("nz_items", JSON.stringify(lite)); } catch {}
+  };
+
+  /* ── ApiKey Setup ───────────────────────────────────── */
+  function ApiKeySetup({ onSave }) {
+    const [key, setKey] = useState("");
+    const [err, setErr] = useState("");
+
+    const handleSave = () => {
+      if (!key.trim().startsWith("sk-ant-")) {
+        setErr("Kľúč musí začínať na sk-ant-");
+        return;
+      }
+      localStorage.setItem("nz_apikey", key.trim());
+      onSave(key.trim());
+    };
+
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 24px", background: "#F5F3EF" }}>
+        <div style={{ fontSize: 72, marginBottom: 12, lineHeight: 1 }}>🛒</div>
+        <div style={{ fontSize: 26, fontWeight: 900, color: "#1B5E20", marginBottom: 6, textAlign: "center" }}>Nákupný Zoznam AI</div>
+        <div style={{ fontSize: 14, color: "#666", textAlign: "center", marginBottom: 36, lineHeight: 1.7 }}>
+          Na rozpoznávanie produktov z letákov<br />potrebuješ API kľúč od Anthropic.
+        </div>
+
+        <div style={{ width: "100%", background: "#fff", borderRadius: 18, padding: "20px 20px 16px", boxShadow: "0 4px 24px rgba(0,0,0,0.09)", marginBottom: 14 }}>
+          <label style={{ fontSize: 11, fontWeight: 800, color: "#888", letterSpacing: 1, display: "block", marginBottom: 10 }}>ANTHROPIC API KĽÚČ</label>
+          <input
+            type="password"
+            value={key}
+            onChange={e => { setKey(e.target.value); setErr(""); }}
+            onKeyDown={e => e.key === "Enter" && handleSave()}
+            placeholder="sk-ant-api03-..."
+            style={{ width: "100%", padding: "10px 0", border: "none", borderBottom: "2px solid #E0E0E0", fontSize: 15, outline: "none", background: "transparent", fontFamily: "monospace" }}
+          />
+          {err && <div style={{ color: "#E53935", fontSize: 12, marginTop: 8, fontWeight: 700 }}>{err}</div>}
+        </div>
+
+        <button
+          onClick={handleSave}
+          style={{ width: "100%", padding: 16, borderRadius: 16, border: "none", background: key.trim() ? "linear-gradient(135deg,#1B5E20,#388E3C)" : "#E0E0E0", color: key.trim() ? "#fff" : "#aaa", fontSize: 16, fontWeight: 800, cursor: key.trim() ? "pointer" : "default", transition: "all 0.2s" }}>
+          Začať používať →
+        </button>
+
+        <div style={{ marginTop: 28, fontSize: 12, color: "#aaa", textAlign: "center", lineHeight: 2 }}>
+          🔒 Kľúč sa uloží len na tvojom zariadení.<br />
+          Získaš ho zadarmo na <b style={{ color: "#555" }}>console.anthropic.com</b>
+        </div>
       </div>
-    </div>
-  </header>
+    );
+  }
 
-  <main id="grid">
-    <!-- karty sa vygenerujú dynamicky -->
-  </main>
+  /* ── QuickAdd ───────────────────────────────────────── */
+  function QuickAdd({ onAdd }) {
+    const [name, setName] = useState("");
+    const [price, setPrice] = useState("");
+    const [storeId, setStoreId] = useState("lidl");
+    const [qty, setQty] = useState(1);
 
-  <footer>
-    <div class="footer-left">
-      <div class="live-dot" id="liveDot"></div>
-      <span class="status-txt" id="statusTxt">Načítavam…</span>
-    </div>
-    <button class="refresh-btn" id="refreshBtn" onclick="manualRefresh()">↻ Obnoviť</button>
-  </footer>
+    const add = () => {
+      if (!name.trim()) return;
+      const store = STORES.find(s => s.id === storeId) || STORES[STORES.length - 1];
+      onAdd({ name: name.trim(), price: price ? parseFloat(price) : null, unit: "ks", quantity: qty, imageUrl: null, store });
+      setName(""); setPrice(""); setQty(1);
+    };
 
-</div>
+    return (
+      <div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+          {STORES.map(s => (
+            <button key={s.id} onClick={() => setStoreId(s.id)}
+              style={{ padding: "5px 12px", borderRadius: 16, border: "2px solid", borderColor: storeId === s.id ? s.bg : "#E0E0E0", background: storeId === s.id ? s.bg : "#F5F5F5", color: storeId === s.id ? s.color : "#666", fontSize: 12, fontWeight: 700, cursor: "pointer", transition: "all 0.15s" }}>
+              {s.name}
+            </button>
+          ))}
+        </div>
+        <input
+          value={name}
+          onChange={e => setName(e.target.value)}
+          onKeyDown={e => e.key === "Enter" && add()}
+          placeholder="Názov produktu..."
+          style={{ width: "100%", padding: "10px 14px", borderRadius: 12, border: "1.5px solid #E0E0E0", fontSize: 15, marginBottom: 8, outline: "none", fontFamily: "inherit" }}
+        />
+        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+          <input
+            type="number" step="0.01" value={price} onChange={e => setPrice(e.target.value)}
+            placeholder="Cena €"
+            style={{ flex: 1, padding: "10px 12px", borderRadius: 12, border: "1.5px solid #E0E0E0", fontSize: 15, outline: "none", fontFamily: "inherit" }}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#F5F5F5", borderRadius: 12, padding: "0 14px" }}>
+            <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#333", lineHeight: 1, padding: "6px 2px" }}>−</button>
+            <span style={{ fontSize: 16, fontWeight: 800, minWidth: 22, textAlign: "center" }}>{qty}</span>
+            <button onClick={() => setQty(q => q + 1)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#333", lineHeight: 1, padding: "6px 2px" }}>+</button>
+          </div>
+        </div>
+        <button onClick={add} style={{ width: "100%", padding: 13, borderRadius: 12, border: "none", background: name.trim() ? "linear-gradient(135deg,#1B5E20,#388E3C)" : "#E0E0E0", color: name.trim() ? "#fff" : "#aaa", fontSize: 15, fontWeight: 800, cursor: name.trim() ? "pointer" : "default", fontFamily: "inherit" }}>
+          + Pridať do zoznamu
+        </button>
+      </div>
+    );
+  }
+
+  /* ── Main App ───────────────────────────────────────── */
+  function App() {
+    const [apiKey, setApiKey] = useState(() => localStorage.getItem("nz_apikey") || "");
+    const [items, setItems]   = useState(loadItems);
+    const [view, setView]     = useState("list"); // list | scanner
+    const [extracting, setExtracting] = useState(false);
+    const [draft, setDraft]   = useState(null);
+    const cameraRef  = useRef();
+    const galleryRef = useRef();
+
+    const persistItems = (arr) => { setItems(arr); saveItems(arr); };
+
+    /* AI analysis */
+    const analyzeImage = async (base64, previewUrl, mediaType = "image/jpeg") => {
+      setExtracting(true);
+      setView("scanner");
+      try {
+        const resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": apiKey,
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true",
+          },
+          body: JSON.stringify({
+            model: "claude-opus-4-5",
+            max_tokens: 400,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+                { type: "text", text: `Analyzuj obrázok letáku alebo produktu. Vráť VÝLUČNE JSON bez markdown:\n{"name":"názov produktu po slovensky","price":9.99,"store":"Lidl","unit":"ks"}\n- price: číslo bez meny, null ak nevidno\n- store: meno obchodu alebo null\n- unit: ks/kg/l/ml/g alebo null\n- name: krátky výstižný názov` }
+              ]
+            }]
+          })
+        });
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error.message);
+        const raw   = data.content?.map(b => b.text || "").join("").trim();
+        const clean = raw.replace(/```json|```/g, "").trim();
+        const p     = JSON.parse(clean);
+        const ds    = storeFromText(p.store);
+        setDraft({ name: p.name || "Produkt z letáku", price: p.price ?? null, unit: p.unit || "ks", quantity: 1, imageUrl: previewUrl, storeId: ds?.id || "iny" });
+      } catch (e) {
+        setDraft({ name: "Produkt z letáku", price: null, unit: "ks", quantity: 1, imageUrl: previewUrl, storeId: "iny", error: e.message });
+      }
+      setExtracting(false);
+    };
+
+    const handleFile = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      e.target.value = "";
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX = 1600;
+          let w = img.width, h = img.height;
+          if (w > MAX || h > MAX) {
+            if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+            else { w = Math.round(w * MAX / h); h = MAX; }
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w; canvas.height = h;
+          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+          analyzeImage(dataUrl.split(",")[1], dataUrl, "image/jpeg");
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    };
+
+    const confirmAdd = () => {
+      const store = STORES.find(s => s.id === draft.storeId) || STORES[STORES.length - 1];
+      persistItems([...items, { id: Date.now(), name: draft.name, price: draft.price, unit: draft.unit, quantity: draft.quantity, imageUrl: draft.imageUrl, store, checked: false }]);
+      setDraft(null); setView("list");
+    };
+
+    const toggle    = (id) => persistItems(items.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
+    const remove    = (id) => persistItems(items.filter(i => i.id !== id));
+    const updQty    = (id, d) => persistItems(items.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + d) } : i));
+    const clearDone = () => persistItems(items.filter(i => !i.checked));
+
+    const groups       = STORES.map(s => ({ store: s, items: items.filter(i => i.store?.id === s.id) })).filter(g => g.items.length > 0);
+    const grandTotal   = items.reduce((s, i) => s + (i.price || 0) * i.quantity, 0);
+    const checkedCount = items.filter(i => i.checked).length;
+    const leftCount    = items.length - checkedCount;
+
+    if (!apiKey) return <ApiKeySetup onSave={setApiKey} />;
+
+    return (
+      <div style={{ background: "#F5F3EF", minHeight: "100vh", paddingBottom: 110 }}>
+
+        {/* ── Header ── */}
+        <div style={{ background: "linear-gradient(135deg,#1B5E20 0%,#2E7D32 60%,#388E3C 100%)", padding: "20px 20px 22px", color: "#fff", position: "sticky", top: 0, zIndex: 20, boxShadow: "0 4px 20px rgba(0,0,0,0.18)" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div>
+              <div style={{ fontSize: 21, fontWeight: 900, letterSpacing: -0.3 }}>🛒 Nákupný zoznam</div>
+              <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>
+                {items.length === 0 ? "Ešte nič nepridané" : `${leftCount} zostatok · ${fmt(grandTotal)} celkom`}
+              </div>
+            </div>
+            {checkedCount > 0 && (
+              <button onClick={clearDone} style={{ background: "rgba(255,255,255,0.18)", border: "none", color: "#fff", padding: "7px 14px", borderRadius: 20, fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                🗑 Vymazať ({checkedCount})
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ── Scanner view ── */}
+        {view === "scanner" && (
+          <div style={{ padding: 20 }} className="slide-in">
+            {extracting ? (
+              <div style={{ textAlign: "center", padding: "50px 0" }}>
+                <div style={{ fontSize: 52, marginBottom: 18 }}>🔍</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: "#1B5E20", marginBottom: 6 }}>Rozpoznávam produkt...</div>
+                <div style={{ fontSize: 13, color: "#999" }}>AI analyzuje leták</div>
+                <div style={{ marginTop: 22 }}>
+                  <div style={{ width: 220, height: 6, background: "#E0E0E0", borderRadius: 3, margin: "0 auto", overflow: "hidden" }}>
+                    <div style={{ height: "100%", background: "linear-gradient(90deg,#2E7D32,#81C784)", borderRadius: 3, width: "55%", animation: "pulse-bar 1.1s ease-in-out infinite" }} />
+                  </div>
+                </div>
+              </div>
+            ) : draft && (
+              <div>
+                {draft.error && (
+                  <div style={{ background: "#FFF3E0", borderRadius: 12, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#E65100", fontWeight: 600 }}>
+                    ⚠️ {draft.error} — uprav údaje ručne
+                  </div>
+                )}
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#1B5E20", marginBottom: 14 }}>✅ Produkt nájdený</div>
+
+                {draft.imageUrl && (
+                  <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 14, height: 190, background: "#E8E8E8" }}>
+                    <img src={draft.imageUrl} alt="leták" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  </div>
+                )}
+
+                {/* Fields card */}
+                <div style={{ background: "#fff", borderRadius: 16, padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", marginBottom: 12 }}>
+                  <label style={{ fontSize: 11, fontWeight: 800, color: "#aaa", letterSpacing: 0.8 }}>NÁZOV PRODUKTU</label>
+                  <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+                    style={{ display: "block", width: "100%", border: "none", fontSize: 16, fontWeight: 700, color: "#222", outline: "none", background: "transparent", marginTop: 4, fontFamily: "inherit" }} />
+                  <div style={{ height: 1, background: "#F0F0F0", margin: "12px 0" }} />
+
+                  <div style={{ display: "flex", gap: 16 }}>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 11, fontWeight: 800, color: "#aaa", letterSpacing: 0.8 }}>CENA (€)</label>
+                      <input type="number" step="0.01" min="0" value={draft.price ?? ""} placeholder="0.00"
+                        onChange={e => setDraft(d => ({ ...d, price: e.target.value ? parseFloat(e.target.value) : null }))}
+                        style={{ display: "block", width: "100%", border: "none", fontSize: 16, fontWeight: 700, color: "#222", outline: "none", background: "transparent", marginTop: 4, fontFamily: "inherit" }} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label style={{ fontSize: 11, fontWeight: 800, color: "#aaa", letterSpacing: 0.8 }}>POČET KUSOV</label>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
+                        <button onClick={() => setDraft(d => ({ ...d, quantity: Math.max(1, d.quantity - 1) }))}
+                          style={{ width: 32, height: 32, borderRadius: 8, border: "2px solid #E0E0E0", background: "#fff", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>−</button>
+                        <span style={{ fontSize: 18, fontWeight: 900, minWidth: 26, textAlign: "center" }}>{draft.quantity}</span>
+                        <button onClick={() => setDraft(d => ({ ...d, quantity: d.quantity + 1 }))}
+                          style={{ width: 32, height: 32, borderRadius: 8, border: "2px solid #E0E0E0", background: "#fff", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>+</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Store picker */}
+                <div style={{ background: "#fff", borderRadius: 16, padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", marginBottom: 16 }}>
+                  <label style={{ fontSize: 11, fontWeight: 800, color: "#aaa", letterSpacing: 0.8, display: "block", marginBottom: 10 }}>OBCHOD</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {STORES.map(s => (
+                      <button key={s.id} onClick={() => setDraft(d => ({ ...d, storeId: s.id }))}
+                        style={{ padding: "7px 15px", borderRadius: 20, border: "2px solid", borderColor: draft.storeId === s.id ? s.bg : "#E0E0E0", background: draft.storeId === s.id ? s.bg : "#F5F5F5", color: draft.storeId === s.id ? s.color : "#555", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s", fontFamily: "inherit" }}>
+                        {s.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button onClick={() => { setDraft(null); setView("list"); }}
+                    style={{ flex: 1, padding: 14, borderRadius: 14, border: "2px solid #E0E0E0", background: "#fff", fontSize: 15, fontWeight: 700, color: "#666", cursor: "pointer", fontFamily: "inherit" }}>Zrušiť</button>
+                  <button onClick={confirmAdd}
+                    style={{ flex: 2, padding: 14, borderRadius: 14, border: "none", background: "linear-gradient(135deg,#1B5E20,#388E3C)", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>+ Pridať do zoznamu</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── List view ── */}
+        {view === "list" && (
+          <div style={{ padding: "16px 16px 0" }}>
+            {items.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "64px 24px" }}>
+                <div style={{ fontSize: 68, marginBottom: 16, lineHeight: 1 }}>📋</div>
+                <div style={{ fontSize: 19, fontWeight: 800, color: "#333", marginBottom: 8 }}>Zoznam je prázdny</div>
+                <div style={{ fontSize: 14, color: "#888", lineHeight: 1.6 }}>Stlač 📷 a ofoť produkt z letáku,<br />alebo ho pridaj ručne nižšie.</div>
+              </div>
+            ) : groups.map(({ store, items: si }) => (
+              <div key={store.id} style={{ marginBottom: 22 }} className="slide-in">
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <div style={{ background: store.bg, color: store.color, padding: "5px 14px", borderRadius: 20, fontSize: 13, fontWeight: 800 }}>{store.name}</div>
+                  <div style={{ fontSize: 13, color: "#888", fontWeight: 700 }}>
+                    {fmt(si.reduce((s, i) => s + (i.price || 0) * i.quantity, 0))}
+                  </div>
+                </div>
+                {si.map(item => (
+                  <div key={item.id} style={{ background: "#fff", borderRadius: 16, marginBottom: 8, display: "flex", alignItems: "center", padding: "10px 14px 10px 10px", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", opacity: item.checked ? 0.48 : 1, transition: "opacity 0.2s", gap: 11 }}>
+                    {item.imageUrl ? (
+                      <div style={{ width: 54, height: 54, borderRadius: 12, overflow: "hidden", flexShrink: 0 }}>
+                        <img src={item.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      </div>
+                    ) : (
+                      <div style={{ width: 54, height: 54, borderRadius: 12, background: store.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 24 }}>🛍️</div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#222", textDecoration: item.checked ? "line-through" : "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</div>
+                      <div style={{ fontSize: 13, color: "#999", marginTop: 2, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        {item.price != null && <span style={{ fontWeight: 700, color: "#2E7D32" }}>{fmt(item.price)}</span>}
+                        {item.quantity > 1 && <span>× {item.quantity} = <b style={{ color: "#2E7D32" }}>{fmt((item.price || 0) * item.quantity)}</b></span>}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                      <button onClick={() => updQty(item.id, -1)} style={{ width: 28, height: 28, borderRadius: 8, border: "1.5px solid #E0E0E0", background: "#fff", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>−</button>
+                      <span style={{ fontSize: 14, fontWeight: 800, minWidth: 20, textAlign: "center" }}>{item.quantity}</span>
+                      <button onClick={() => updQty(item.id, 1)}  style={{ width: 28, height: 28, borderRadius: 8, border: "1.5px solid #E0E0E0", background: "#fff", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>+</button>
+                      <button onClick={() => toggle(item.id)} style={{ width: 30, height: 30, borderRadius: 8, border: "none", background: item.checked ? "#4CAF50" : "#EBEBEB", fontSize: 15, cursor: "pointer", marginLeft: 2, lineHeight: 1 }}>{item.checked ? "✓" : "○"}</button>
+                      <button onClick={() => remove(item.id)} style={{ width: 30, height: 30, borderRadius: 8, border: "none", background: "#FFEBEE", color: "#E53935", fontSize: 17, cursor: "pointer", fontWeight: 800, lineHeight: 1 }}>×</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {/* Total card */}
+            {items.length > 0 && (
+              <div style={{ background: "linear-gradient(135deg,#1B5E20,#2E7D32)", borderRadius: 18, padding: "16px 22px", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+                <div>
+                  <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 700, letterSpacing: 0.8 }}>CELKOVÁ SUMA</div>
+                  <div style={{ fontSize: 26, fontWeight: 900 }}>{fmt(grandTotal)}</div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 700, letterSpacing: 0.8 }}>POLOŽKY</div>
+                  <div style={{ fontSize: 26, fontWeight: 900 }}>{items.length}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Quick add */}
+            <div style={{ background: "#fff", borderRadius: 18, padding: 18, boxShadow: "0 2px 14px rgba(0,0,0,0.07)", marginBottom: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: "#333", marginBottom: 14 }}>📱 Pridať z digitálneho letáku</div>
+              <QuickAdd onAdd={(item) => persistItems([...items, { ...item, id: Date.now(), checked: false }])} />
+            </div>
+          </div>
+        )}
+
+        {/* ── FAB buttons ── */}
+        {view === "list" && (
+          <div style={{ position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 14, zIndex: 100 }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+              <button onClick={() => cameraRef.current.click()}
+                style={{ background: "linear-gradient(135deg,#1B5E20,#388E3C)", color: "#fff", border: "none", borderRadius: "50%", width: 68, height: 68, fontSize: 28, cursor: "pointer", boxShadow: "0 6px 22px rgba(27,94,32,0.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                📷
+              </button>
+              <span style={{ fontSize: 11, color: "#fff", fontWeight: 800, background: "rgba(0,0,0,0.38)", borderRadius: 8, padding: "2px 8px" }}>Foťiť</span>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
+              <button onClick={() => galleryRef.current.click()}
+                style={{ background: "#fff", color: "#1B5E20", border: "2.5px solid #1B5E20", borderRadius: "50%", width: 68, height: 68, fontSize: 26, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.13)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                🖼️
+              </button>
+              <span style={{ fontSize: 11, color: "#fff", fontWeight: 800, background: "rgba(0,0,0,0.38)", borderRadius: 8, padding: "2px 8px" }}>Galéria</span>
+            </div>
+          </div>
+        )}
+
+        {/* Hidden file inputs */}
+        <input ref={cameraRef}  type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleFile} />
+        <input ref={galleryRef} type="file" accept="image/*"                       style={{ display: "none" }} onChange={handleFile} />
+      </div>
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
 
 <script>
-// ── KONFIGURÁCIA ──────────────────────────────────────────────────────────────
-const REFRESH_MS   = 15000;   // interval automatického načítania (ms)
-const API_SENSORS  = '/api/sensors';
-const API_REFRESH  = '/api/refresh';
-
-// Farby prízvuku pre každý slot (0–3)
-const ACCENT_COLORS = ['#4a9eff', '#30d9a0', '#f5a623', '#9b7ff5'];
-
-// ── POMOCNÉ FUNKCIE ───────────────────────────────────────────────────────────
-
-function tempColor(t) {
-  if (t === null || t === undefined) return 'var(--muted)';
-  if (t < 10)  return '#4a9eff';   // studená modrá
-  if (t < 18)  return '#a0c8ff';   // chladná
-  if (t < 24)  return '#30d9a0';   // komfortná teal
-  if (t < 28)  return '#f5a623';   // teplejšia oranžová
-  return '#ff5c5c';                // horúca červená
-}
-
-function statusLabel(s) {
-  return { ok: 'Online', warn: 'Upozornenie', error: 'Offline', demo: 'Demo', loading: '…' }[s] || s;
-}
-
-function fmt(v, decimals = 1) {
-  return v !== null && v !== undefined ? v.toFixed(decimals) : '--';
-}
-
-function formatDate(d) {
-  return d.toLocaleDateString('sk-SK', { weekday: 'long', day: 'numeric', month: 'long' });
-}
-
-// ── CLOCK ────────────────────────────────────────────────────────────────────
-function updateClock() {
-  const now = new Date();
-  document.getElementById('clock').textContent =
-    now.toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  document.getElementById('dateTxt').textContent = formatDate(now);
-}
-updateClock();
-setInterval(updateClock, 1000);
-
-// ── RENDER ───────────────────────────────────────────────────────────────────
-function renderCards(data) {
-  const grid = document.getElementById('grid');
-  grid.innerHTML = data.map((s, i) => {
-    const accent = ACCENT_COLORS[i % ACCENT_COLORS.length];
-    const tc = tempColor(s.temp);
-    const isNull = s.temp === null || s.temp === undefined;
-    return `
-      <div class="card" style="--accent: ${accent}">
-        <div class="card-top">
-          <div>
-            <div class="card-label">Senzor ${i + 1}</div>
-            <div class="card-name">${s.name}</div>
-          </div>
-          <span class="status-badge ${s.status}">${statusLabel(s.status)}</span>
-        </div>
-
-        <div class="temp-row">
-          <span class="temp-val ${isNull ? 'null-val' : ''}" style="color: ${isNull ? '' : tc}">
-            ${isNull ? '—·—' : fmt(s.temp)}
-          </span>
-          ${isNull ? '' : '<span class="temp-unit">°C</span>'}
-        </div>
-
-        <div class="divider"></div>
-
-        <div class="metrics-row">
-          <div class="metric">
-            <span class="metric-label">Vlhkosť</span>
-            <span class="metric-val">${s.humidity !== null && s.humidity !== undefined ? s.humidity + ' %' : '—'}</span>
-          </div>
-          <div class="metric">
-            <span class="metric-label">Stav</span>
-            <span class="metric-val">${s.status === 'ok' ? 'V poriadku' : s.status === 'demo' ? 'Demo dáta' : s.status === 'error' ? 'Chyba' : '—'}</span>
-          </div>
-        </div>
-      </div>
-    `;
-  }).join('');
-}
-
-function setStatus(msg, state = 'ok') {
-  const dot = document.getElementById('liveDot');
-  const txt = document.getElementById('statusTxt');
-  txt.textContent = msg;
-  dot.className = 'live-dot' + (state === 'error' ? ' error' : state === 'paused' ? ' paused' : '');
-}
-
-// ── NAČÍTANIE DÁT ─────────────────────────────────────────────────────────────
-async function fetchData(endpoint = API_SENSORS) {
-  try {
-    const res = await fetch(endpoint, { method: endpoint === API_REFRESH ? 'POST' : 'GET' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    // API_REFRESH vracia { ok, data }, API_SENSORS vracia priamo pole
-    return Array.isArray(json) ? json : json.data;
-  } catch (e) {
-    console.error('Fetch error:', e);
-    return null;
+  // Register service worker
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => {
+      navigator.serviceWorker.register("./sw.js")
+        .then(r => console.log("SW registered:", r.scope))
+        .catch(e => console.warn("SW failed:", e));
+    });
   }
-}
-
-async function loadSensors(manual = false) {
-  const btn = document.getElementById('refreshBtn');
-  btn.innerHTML = '<span class="spin">↻</span> Načítavam…';
-  btn.disabled = true;
-
-  const data = await fetchData(manual ? API_REFRESH : API_SENSORS);
-
-  btn.innerHTML = '↻ Obnoviť';
-  btn.disabled = false;
-
-  if (!data) {
-    setStatus('Chyba spojenia so serverom', 'error');
-    return;
-  }
-
-  renderCards(data);
-
-  const now = new Date().toLocaleTimeString('sk-SK');
-  const allOk = data.every(s => s.status === 'ok' || s.status === 'demo');
-  const hasError = data.some(s => s.status === 'error');
-  setStatus(
-    `Posledná aktualizácia: ${now}`,
-    hasError ? 'error' : 'ok'
-  );
-}
-
-async function manualRefresh() {
-  await loadSensors(true);
-}
-
-// ── ŠTART ────────────────────────────────────────────────────────────────────
-// Zobraziť placeholder karty hneď
-const placeholders = [
-  { name: 'Obývačka', temp: null, humidity: null, status: 'loading' },
-  { name: 'Spálňa',   temp: null, humidity: null, status: 'loading' },
-  { name: 'Kuchyňa',  temp: null, humidity: null, status: 'loading' },
-  { name: 'Garáž',    temp: null, humidity: null, status: 'loading' },
-];
-renderCards(placeholders);
-
-loadSensors();
-setInterval(() => loadSensors(false), REFRESH_MS);
 </script>
 </body>
 </html>
