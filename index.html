@@ -6,477 +6,434 @@
   <meta name="theme-color" content="#1B5E20" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="Nákupy AI" />
   <title>Nákupný Zoznam AI</title>
-  <link rel="manifest" href="manifest.json" />
-  <link rel="icon" href="icon.svg" />
-  <link rel="apple-touch-icon" href="icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet" />
-
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
     html, body { height: 100%; overscroll-behavior: none; }
     body { font-family: 'Nunito', 'Segoe UI', sans-serif; background: #F5F3EF; }
     #root { max-width: 480px; margin: 0 auto; min-height: 100vh; }
-
-    input[type=number]::-webkit-inner-spin-button,
-    input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
     input[type=number] { -moz-appearance: textfield; }
-
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateY(24px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
-    @keyframes pulse-bar {
-      0%   { transform: translateX(-100%); }
-      100% { transform: translateX(260%); }
-    }
-    .slide-in { animation: slideIn 0.28s ease both; }
-
-    button:active { opacity: 0.82; }
-    .fab:active { transform: translateX(-50%) scale(0.93) !important; }
+    @keyframes pulse-bar { 0%{transform:translateX(-130%)} 100%{transform:translateX(290%)} }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
 <div id="root"></div>
-
 <script type="text/babel" data-presets="react">
-  const { useState, useRef, useEffect } = React;
+const { useState, useEffect, useRef, useCallback } = React;
 
-  /* ── Constants ─────────────────────────────────────── */
-  const STORES = [
-    { id: "lidl",     name: "Lidl",       color: "#FFD700", bg: "#003087" },
-    { id: "billa",    name: "Billa",      color: "#fff",    bg: "#CC0000" },
-    { id: "kaufland", name: "Kaufland",   color: "#fff",    bg: "#E30613" },
-    { id: "tesco",    name: "Tesco",      color: "#fff",    bg: "#00539F" },
-    { id: "albert",   name: "Albert",     color: "#fff",    bg: "#E2001A" },
-    { id: "coop",     name: "Coop",       color: "#fff",    bg: "#004B87" },
-    { id: "fresh",    name: "Fresh",      color: "#fff",    bg: "#2E7D32" },
-    { id: "iny",      name: "Iný obchod", color: "#fff",    bg: "#6B7280" },
-  ];
+// ── Firebase URL ────────────────────────────────────────────────
+const DB = "https://nakupy-1c12d-default-rtdb.europe-west1.firebasedatabase.app";
 
-  const storeFromText = (text) => {
-    if (!text) return null;
-    const t = text.toLowerCase();
-    return STORES.find(s => t.includes(s.name.toLowerCase())) || null;
+// ── Obchody ─────────────────────────────────────────────────────
+const STORES = [
+  { id:"lidl",     name:"Lidl",       color:"#FFD700", bg:"#003087" },
+  { id:"billa",    name:"Billa",      color:"#fff",    bg:"#CC0000" },
+  { id:"kaufland", name:"Kaufland",   color:"#fff",    bg:"#E30613" },
+  { id:"tesco",    name:"Tesco",      color:"#fff",    bg:"#00539F" },
+  { id:"albert",   name:"Albert",     color:"#fff",    bg:"#E2001A" },
+  { id:"coop",     name:"Coop",       color:"#fff",    bg:"#004B87" },
+  { id:"fresh",    name:"Fresh",      color:"#fff",    bg:"#2E7D32" },
+  { id:"iny",      name:"Iný obchod", color:"#fff",    bg:"#6B7280" },
+];
+
+const matchStore = t => { if(!t) return null; const l=t.toLowerCase(); return STORES.find(s=>l.includes(s.name.toLowerCase()))||null; };
+const fmt = (p,q=1) => p!=null ? (p*q).toFixed(2).replace(".",",")+"\u00a0€" : "—";
+
+// ── Firebase REST API ───────────────────────────────────────────
+const fbGet  = async path => { const r=await fetch(`${DB}${path}.json`); return r.json(); };
+const fbSet  = async (path,data) => fetch(`${DB}${path}.json`,{method:"PUT",body:JSON.stringify(data)});
+const fbPatch= async (path,data) => fetch(`${DB}${path}.json`,{method:"PATCH",body:JSON.stringify(data)});
+const fbDel  = async path => fetch(`${DB}${path}.json`,{method:"DELETE"});
+
+// ── Setup obrazovka ─────────────────────────────────────────────
+function Setup({ onSave }) {
+  const [apiKey, setApiKey] = useState("");
+  const [err,    setErr]    = useState("");
+
+  const save = () => {
+    if (!apiKey.trim().startsWith("sk-ant-")) { setErr("Kľúč musí začínať na sk-ant-"); return; }
+    localStorage.setItem("nz_api", apiKey.trim());
+    onSave(apiKey.trim());
   };
 
-  const fmt = (p) =>
-    p != null ? p.toFixed(2).replace(".", ",") + "\u00a0€" : "—";
+  return (
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px",background:"#F5F3EF"}}>
+      <div style={{fontSize:72,marginBottom:12}}>🛒</div>
+      <div style={{fontSize:26,fontWeight:900,color:"#1B5E20",marginBottom:6,textAlign:"center"}}>Nákupný Zoznam AI</div>
+      <div style={{fontSize:14,color:"#666",textAlign:"center",marginBottom:32,lineHeight:1.7}}>
+        Zdieľaný zoznam pre celú rodinu.<br/>Zadaj API kľúč od Anthropic.
+      </div>
+      <div style={{width:"100%",background:"#fff",borderRadius:18,padding:"20px",boxShadow:"0 4px 24px rgba(0,0,0,0.09)",marginBottom:14}}>
+        <label style={{fontSize:11,fontWeight:800,color:"#888",letterSpacing:1,display:"block",marginBottom:10}}>ANTHROPIC API KĽÚČ</label>
+        <input type="password" value={apiKey} onChange={e=>{setApiKey(e.target.value);setErr("");}}
+          onKeyDown={e=>e.key==="Enter"&&save()} placeholder="sk-ant-api03-..."
+          style={{width:"100%",padding:"10px 0",border:"none",borderBottom:"2px solid #E0E0E0",fontSize:15,outline:"none",background:"transparent",fontFamily:"monospace"}}/>
+        {err && <div style={{color:"#E53935",fontSize:12,marginTop:8,fontWeight:700}}>{err}</div>}
+      </div>
+      <button onClick={save} style={{width:"100%",padding:16,borderRadius:16,border:"none",
+        background:apiKey.trim()?"linear-gradient(135deg,#1B5E20,#388E3C)":"#E0E0E0",
+        color:apiKey.trim()?"#fff":"#aaa",fontSize:16,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+        Začať používať →
+      </button>
+      <div style={{marginTop:24,fontSize:12,color:"#aaa",textAlign:"center",lineHeight:2}}>
+        🔒 Kľúč sa uloží len na tvojom zariadení.<br/>
+        Získaš ho na <b style={{color:"#555"}}>console.anthropic.com</b>
+      </div>
+    </div>
+  );
+}
 
-  const loadItems = () => {
-    try { return JSON.parse(localStorage.getItem("nz_items") || "[]"); } catch { return []; }
+// ── Rýchle pridanie ─────────────────────────────────────────────
+function QuickAdd({ onAdd }) {
+  const [name,    setName]    = useState("");
+  const [price,   setPrice]   = useState("");
+  const [storeId, setStoreId] = useState("lidl");
+  const [qty,     setQty]     = useState(1);
+
+  const add = () => {
+    if (!name.trim()) return;
+    onAdd({ name:name.trim(), unitPrice:price?parseFloat(price):null, quantity:qty, imageUrl:null, store:STORES.find(s=>s.id===storeId) });
+    setName(""); setPrice(""); setQty(1);
   };
-  const saveItems = (arr) => {
-    // strip imageUrl from storage to save space (keep thumbnails small)
-    const lite = arr.map(i => ({ ...i, imageUrl: i.imageUrl ? i.imageUrl.substring(0, 2000) : null }));
-    try { localStorage.setItem("nz_items", JSON.stringify(lite)); } catch {}
-  };
 
-  /* ── ApiKey Setup ───────────────────────────────────── */
-  function ApiKeySetup({ onSave }) {
-    const [key, setKey] = useState("");
-    const [err, setErr] = useState("");
-
-    const handleSave = () => {
-      if (!key.trim().startsWith("sk-ant-")) {
-        setErr("Kľúč musí začínať na sk-ant-");
-        return;
-      }
-      localStorage.setItem("nz_apikey", key.trim());
-      onSave(key.trim());
-    };
-
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 24px", background: "#F5F3EF" }}>
-        <div style={{ fontSize: 72, marginBottom: 12, lineHeight: 1 }}>🛒</div>
-        <div style={{ fontSize: 26, fontWeight: 900, color: "#1B5E20", marginBottom: 6, textAlign: "center" }}>Nákupný Zoznam AI</div>
-        <div style={{ fontSize: 14, color: "#666", textAlign: "center", marginBottom: 36, lineHeight: 1.7 }}>
-          Na rozpoznávanie produktov z letákov<br />potrebuješ API kľúč od Anthropic.
-        </div>
-
-        <div style={{ width: "100%", background: "#fff", borderRadius: 18, padding: "20px 20px 16px", boxShadow: "0 4px 24px rgba(0,0,0,0.09)", marginBottom: 14 }}>
-          <label style={{ fontSize: 11, fontWeight: 800, color: "#888", letterSpacing: 1, display: "block", marginBottom: 10 }}>ANTHROPIC API KĽÚČ</label>
-          <input
-            type="password"
-            value={key}
-            onChange={e => { setKey(e.target.value); setErr(""); }}
-            onKeyDown={e => e.key === "Enter" && handleSave()}
-            placeholder="sk-ant-api03-..."
-            style={{ width: "100%", padding: "10px 0", border: "none", borderBottom: "2px solid #E0E0E0", fontSize: 15, outline: "none", background: "transparent", fontFamily: "monospace" }}
-          />
-          {err && <div style={{ color: "#E53935", fontSize: 12, marginTop: 8, fontWeight: 700 }}>{err}</div>}
-        </div>
-
-        <button
-          onClick={handleSave}
-          style={{ width: "100%", padding: 16, borderRadius: 16, border: "none", background: key.trim() ? "linear-gradient(135deg,#1B5E20,#388E3C)" : "#E0E0E0", color: key.trim() ? "#fff" : "#aaa", fontSize: 16, fontWeight: 800, cursor: key.trim() ? "pointer" : "default", transition: "all 0.2s" }}>
-          Začať používať →
-        </button>
-
-        <div style={{ marginTop: 28, fontSize: 12, color: "#aaa", textAlign: "center", lineHeight: 2 }}>
-          🔒 Kľúč sa uloží len na tvojom zariadení.<br />
-          Získaš ho zadarmo na <b style={{ color: "#555" }}>console.anthropic.com</b>
+  return (
+    <div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:12}}>
+        {STORES.map(s=>(
+          <button key={s.id} onClick={()=>setStoreId(s.id)} style={{padding:"5px 12px",borderRadius:16,border:"2px solid",
+            borderColor:storeId===s.id?s.bg:"#DDD",background:storeId===s.id?s.bg:"#F5F5F5",
+            color:storeId===s.id?s.color:"#555",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            {s.name}
+          </button>
+        ))}
+      </div>
+      <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}
+        placeholder="Názov produktu..."
+        style={{width:"100%",padding:"11px 14px",borderRadius:12,border:"1.5px solid #DDD",fontSize:15,marginBottom:8,outline:"none",fontFamily:"inherit"}}/>
+      <div style={{display:"flex",gap:8,marginBottom:10}}>
+        <input type="number" step="0.01" value={price} onChange={e=>setPrice(e.target.value)} placeholder="Cena €"
+          style={{flex:1,padding:"11px 12px",borderRadius:12,border:"1.5px solid #DDD",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
+        <div style={{display:"flex",alignItems:"center",gap:8,background:"#F5F5F5",borderRadius:12,padding:"0 14px"}}>
+          <button onClick={()=>setQty(q=>Math.max(1,q-1))} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",padding:"6px 2px",lineHeight:1}}>−</button>
+          <span style={{fontWeight:800,fontSize:16,minWidth:22,textAlign:"center"}}>{qty}</span>
+          <button onClick={()=>setQty(q=>q+1)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",padding:"6px 2px",lineHeight:1}}>+</button>
         </div>
       </div>
-    );
-  }
+      <button onClick={add} style={{width:"100%",padding:13,borderRadius:12,border:"none",
+        background:name.trim()?"linear-gradient(135deg,#1B5E20,#388E3C)":"#E0E0E0",
+        color:name.trim()?"#fff":"#aaa",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+        + Pridať do zoznamu
+      </button>
+    </div>
+  );
+}
 
-  /* ── QuickAdd ───────────────────────────────────────── */
-  function QuickAdd({ onAdd }) {
-    const [name, setName] = useState("");
-    const [price, setPrice] = useState("");
-    const [storeId, setStoreId] = useState("lidl");
-    const [qty, setQty] = useState(1);
+// ── Hlavná appka ─────────────────────────────────────────────────
+function App() {
+  const [apiKey,     setApiKey]     = useState(()=>localStorage.getItem("nz_api")||"");
+  const [items,      setItems]      = useState([]);
+  const [view,       setView]       = useState("list");
+  const [extracting, setExtracting] = useState(false);
+  const [draft,      setDraft]      = useState(null);
+  const [syncing,    setSyncing]    = useState(false);
+  const [lastSync,   setLastSync]   = useState(null);
+  const [aiError,    setAiError]    = useState("");
 
-    const add = () => {
-      if (!name.trim()) return;
-      const store = STORES.find(s => s.id === storeId) || STORES[STORES.length - 1];
-      onAdd({ name: name.trim(), price: price ? parseFloat(price) : null, unit: "ks", quantity: qty, imageUrl: null, store });
-      setName(""); setPrice(""); setQty(1);
-    };
+  // ── Sync z Firebase každé 4 sekundy ──────────────────────────
+  const loadFromDB = useCallback(async (silent=false) => {
+    try {
+      if (!silent) setSyncing(true);
+      const data = await fbGet("/zoznam");
+      const arr  = data ? Object.values(data).filter(Boolean) : [];
+      setItems(arr);
+      setLastSync(new Date());
+    } catch(e) { console.warn("Sync error:", e); }
+    finally { setSyncing(false); }
+  }, []);
 
-    return (
-      <div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-          {STORES.map(s => (
-            <button key={s.id} onClick={() => setStoreId(s.id)}
-              style={{ padding: "5px 12px", borderRadius: 16, border: "2px solid", borderColor: storeId === s.id ? s.bg : "#E0E0E0", background: storeId === s.id ? s.bg : "#F5F5F5", color: storeId === s.id ? s.color : "#666", fontSize: 12, fontWeight: 700, cursor: "pointer", transition: "all 0.15s" }}>
-              {s.name}
-            </button>
-          ))}
-        </div>
-        <input
-          value={name}
-          onChange={e => setName(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && add()}
-          placeholder="Názov produktu..."
-          style={{ width: "100%", padding: "10px 14px", borderRadius: 12, border: "1.5px solid #E0E0E0", fontSize: 15, marginBottom: 8, outline: "none", fontFamily: "inherit" }}
-        />
-        <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-          <input
-            type="number" step="0.01" value={price} onChange={e => setPrice(e.target.value)}
-            placeholder="Cena €"
-            style={{ flex: 1, padding: "10px 12px", borderRadius: 12, border: "1.5px solid #E0E0E0", fontSize: 15, outline: "none", fontFamily: "inherit" }}
-          />
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#F5F5F5", borderRadius: 12, padding: "0 14px" }}>
-            <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#333", lineHeight: 1, padding: "6px 2px" }}>−</button>
-            <span style={{ fontSize: 16, fontWeight: 800, minWidth: 22, textAlign: "center" }}>{qty}</span>
-            <button onClick={() => setQty(q => q + 1)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#333", lineHeight: 1, padding: "6px 2px" }}>+</button>
-          </div>
-        </div>
-        <button onClick={add} style={{ width: "100%", padding: 13, borderRadius: 12, border: "none", background: name.trim() ? "linear-gradient(135deg,#1B5E20,#388E3C)" : "#E0E0E0", color: name.trim() ? "#fff" : "#aaa", fontSize: 15, fontWeight: 800, cursor: name.trim() ? "pointer" : "default", fontFamily: "inherit" }}>
-          + Pridať do zoznamu
-        </button>
-      </div>
-    );
-  }
+  useEffect(() => {
+    loadFromDB();
+    const t = setInterval(()=>loadFromDB(true), 4000);
+    return () => clearInterval(t);
+  }, [loadFromDB]);
 
-  /* ── Main App ───────────────────────────────────────── */
-  function App() {
-    const [apiKey, setApiKey] = useState(() => localStorage.getItem("nz_apikey") || "");
-    const [items, setItems]   = useState(loadItems);
-    const [view, setView]     = useState("list"); // list | scanner
-    const [extracting, setExtracting] = useState(false);
-    const [draft, setDraft]   = useState(null);
-    const cameraRef  = useRef();
-    const galleryRef = useRef();
+  // ── CRUD operácie ─────────────────────────────────────────────
+  const addItem = async item => {
+    const newItem = { id: Date.now()+"_"+Math.random().toString(36).slice(2), checked:false, ...item };
+    await fbPatch("/zoznam", { [newItem.id]: newItem });
+    await loadFromDB(true);
+  };
 
-    const persistItems = (arr) => { setItems(arr); saveItems(arr); };
+  const toggleItem = async item => {
+    const updated = { ...item, checked: !item.checked };
+    await fbPatch("/zoznam", { [item.id]: updated });
+    setItems(p => p.map(i => i.id===item.id ? updated : i));
+  };
 
-    /* AI analysis */
-    const analyzeImage = async (base64, previewUrl, mediaType = "image/jpeg") => {
-      setExtracting(true);
-      setView("scanner");
-      try {
-        const resp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-api-key": apiKey,
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true",
-          },
-          body: JSON.stringify({
-            model: "claude-opus-4-5",
-            max_tokens: 400,
-            messages: [{
-              role: "user",
-              content: [
-                { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
-                { type: "text", text: `Analyzuj obrázok letáku alebo produktu. Vráť VÝLUČNE JSON bez markdown:\n{"name":"názov produktu po slovensky","price":9.99,"store":"Lidl","unit":"ks"}\n- price: číslo bez meny, null ak nevidno\n- store: meno obchodu alebo null\n- unit: ks/kg/l/ml/g alebo null\n- name: krátky výstižný názov` }
-              ]
-            }]
-          })
-        });
-        const data = await resp.json();
-        if (data.error) throw new Error(data.error.message);
-        const raw   = data.content?.map(b => b.text || "").join("").trim();
-        const clean = raw.replace(/```json|```/g, "").trim();
-        const p     = JSON.parse(clean);
-        const ds    = storeFromText(p.store);
-        setDraft({ name: p.name || "Produkt z letáku", price: p.price ?? null, unit: p.unit || "ks", quantity: 1, imageUrl: previewUrl, storeId: ds?.id || "iny" });
-      } catch (e) {
-        setDraft({ name: "Produkt z letáku", price: null, unit: "ks", quantity: 1, imageUrl: previewUrl, storeId: "iny", error: e.message });
-      }
-      setExtracting(false);
-    };
+  const removeItem = async id => {
+    await fbDel(`/zoznam/${id}`);
+    setItems(p => p.filter(i => i.id!==id));
+  };
 
-    const handleFile = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      e.target.value = "";
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const img = new Image();
-        img.onload = () => {
-          const MAX = 1600;
-          let w = img.width, h = img.height;
-          if (w > MAX || h > MAX) {
-            if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
-            else { w = Math.round(w * MAX / h); h = MAX; }
-          }
-          const canvas = document.createElement("canvas");
-          canvas.width = w; canvas.height = h;
-          canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-          const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-          analyzeImage(dataUrl.split(",")[1], dataUrl, "image/jpeg");
-        };
-        img.src = ev.target.result;
+  const changeQty = async (item, delta) => {
+    const updated = { ...item, quantity: Math.max(1, item.quantity+delta) };
+    await fbPatch("/zoznam", { [item.id]: updated });
+    setItems(p => p.map(i => i.id===item.id ? updated : i));
+  };
+
+  const clearChecked = async () => {
+    const checked = items.filter(i=>i.checked);
+    for (const i of checked) await fbDel(`/zoznam/${i.id}`);
+    setItems(p => p.filter(i=>!i.checked));
+  };
+
+  // ── AI analýza obrázka ────────────────────────────────────────
+  const analyzeImage = async (base64, previewUrl) => {
+    setExtracting(true); setView("scanner"); setAiError("");
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({
+          model:"claude-sonnet-4-20250514", max_tokens:400,
+          messages:[{role:"user",content:[
+            {type:"image",source:{type:"base64",media_type:"image/jpeg",data:base64}},
+            {type:"text",text:`Pozri sa na obrázok letáku. Vráť IBA JSON (bez markdown):\n{"name":"slovenský názov","price":1.99,"store":"Lidl","unit":"ks"}\n- price: číslo alebo null\n- store: názov obchodu alebo null\n- unit: ks/kg/l/g/ml alebo null`}
+          ]}]
+        })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+      const text  = data.content.map(b=>b.text||"").join("").trim();
+      const clean = text.replace(/```json|```/g,"").trim();
+      const p     = JSON.parse(clean);
+      const store = matchStore(p.store);
+      setDraft({ name:p.name||"Produkt z letáku", unitPrice:p.price??null, unit:p.unit||"ks", quantity:1, imageUrl:previewUrl, storeId:store?.id||"iny" });
+    } catch(e) {
+      setAiError(e.message||"Chyba rozpoznávania"); 
+      setDraft({ name:"Produkt z letáku", unitPrice:null, unit:"ks", quantity:1, imageUrl:previewUrl, storeId:"iny" });
+    }
+    setExtracting(false);
+  };
+
+  const handleFile = e => {
+    const file = e.target.files?.[0]; if(!file) return; e.target.value="";
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX=1600; let w=img.width, h=img.height;
+        if(w>MAX||h>MAX){ if(w>h){h=Math.round(h*MAX/w);w=MAX;}else{w=Math.round(w*MAX/h);h=MAX;} }
+        const c=document.createElement("canvas"); c.width=w; c.height=h;
+        c.getContext("2d").drawImage(img,0,0,w,h);
+        analyzeImage(c.toDataURL("image/jpeg",0.82).split(",")[1], c.toDataURL("image/jpeg",0.82));
       };
-      reader.readAsDataURL(file);
+      img.src = ev.target.result;
     };
+    reader.readAsDataURL(file);
+  };
 
-    const confirmAdd = () => {
-      const store = STORES.find(s => s.id === draft.storeId) || STORES[STORES.length - 1];
-      persistItems([...items, { id: Date.now(), name: draft.name, price: draft.price, unit: draft.unit, quantity: draft.quantity, imageUrl: draft.imageUrl, store, checked: false }]);
-      setDraft(null); setView("list");
-    };
+  const confirmDraft = async () => {
+    const store = STORES.find(s=>s.id===draft.storeId)||STORES[STORES.length-1];
+    await addItem({ ...draft, store });
+    setDraft(null); setView("list");
+  };
 
-    const toggle    = (id) => persistItems(items.map(i => i.id === id ? { ...i, checked: !i.checked } : i));
-    const remove    = (id) => persistItems(items.filter(i => i.id !== id));
-    const updQty    = (id, d) => persistItems(items.map(i => i.id === id ? { ...i, quantity: Math.max(1, i.quantity + d) } : i));
-    const clearDone = () => persistItems(items.filter(i => !i.checked));
+  // ── Štatistiky ────────────────────────────────────────────────
+  const total      = items.reduce((s,i)=>s+(i.unitPrice||0)*i.quantity,0);
+  const checkedN   = items.filter(i=>i.checked).length;
+  const leftN      = items.length - checkedN;
+  const groups     = STORES.map(s=>({store:s,rows:items.filter(i=>i.store?.id===s.id)})).filter(g=>g.rows.length>0);
 
-    const groups       = STORES.map(s => ({ store: s, items: items.filter(i => i.store?.id === s.id) })).filter(g => g.items.length > 0);
-    const grandTotal   = items.reduce((s, i) => s + (i.price || 0) * i.quantity, 0);
-    const checkedCount = items.filter(i => i.checked).length;
-    const leftCount    = items.length - checkedCount;
+  if (!apiKey) return <Setup onSave={setApiKey} />;
 
-    if (!apiKey) return <ApiKeySetup onSave={setApiKey} />;
+  return (
+    <div style={{background:"#F4F2EE",minHeight:"100vh",paddingBottom:110}}>
 
-    return (
-      <div style={{ background: "#F5F3EF", minHeight: "100vh", paddingBottom: 110 }}>
+      {/* HEADER */}
+      <div style={{background:"linear-gradient(135deg,#1B5E20,#2E7D32,#388E3C)",padding:"18px 18px 20px",color:"#fff",position:"sticky",top:0,zIndex:20,boxShadow:"0 3px 16px rgba(0,0,0,0.18)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div>
+            <div style={{fontSize:20,fontWeight:900}}>🛒 Nákupný zoznam</div>
+            <div style={{fontSize:12,opacity:0.8,marginTop:2,display:"flex",alignItems:"center",gap:6}}>
+              {items.length===0?"Zoznam je prázdny":`${leftN} zostáva · ${fmt(total)}`}
+              {syncing && <span style={{fontSize:10,opacity:0.7}}>↻</span>}
+              {lastSync && !syncing && <span style={{fontSize:10,opacity:0.6}}>● live</span>}
+            </div>
+          </div>
+          {checkedN>0 && (
+            <button onClick={clearChecked} style={{background:"rgba(255,255,255,0.18)",border:"none",color:"#fff",padding:"7px 13px",borderRadius:20,fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              🗑 Zmazať ({checkedN})
+            </button>
+          )}
+        </div>
+      </div>
 
-        {/* ── Header ── */}
-        <div style={{ background: "linear-gradient(135deg,#1B5E20 0%,#2E7D32 60%,#388E3C 100%)", padding: "20px 20px 22px", color: "#fff", position: "sticky", top: 0, zIndex: 20, boxShadow: "0 4px 20px rgba(0,0,0,0.18)" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div>
-              <div style={{ fontSize: 21, fontWeight: 900, letterSpacing: -0.3 }}>🛒 Nákupný zoznam</div>
-              <div style={{ fontSize: 13, opacity: 0.8, marginTop: 2 }}>
-                {items.length === 0 ? "Ešte nič nepridané" : `${leftCount} zostatok · ${fmt(grandTotal)} celkom`}
+      {/* ANALYZUJEM */}
+      {view==="scanner" && (
+        <div style={{padding:20}}>
+          {extracting ? (
+            <div style={{textAlign:"center",padding:"64px 0"}}>
+              <div style={{fontSize:54,marginBottom:16}}>🔍</div>
+              <div style={{fontSize:17,fontWeight:800,color:"#1B5E20",marginBottom:6}}>AI rozpoznáva produkt…</div>
+              <div style={{fontSize:13,color:"#999",marginBottom:24}}>Chvíľu počkaj</div>
+              <div style={{width:220,height:6,background:"#E0E0E0",borderRadius:3,margin:"0 auto",overflow:"hidden"}}>
+                <div style={{height:"100%",width:"55%",background:"linear-gradient(90deg,#2E7D32,#81C784)",borderRadius:3,animation:"pulse-bar 1.1s ease-in-out infinite"}}/>
               </div>
             </div>
-            {checkedCount > 0 && (
-              <button onClick={clearDone} style={{ background: "rgba(255,255,255,0.18)", border: "none", color: "#fff", padding: "7px 14px", borderRadius: 20, fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
-                🗑 Vymazať ({checkedCount})
-              </button>
-            )}
+          ) : draft && (
+            <div>
+              {aiError && <div style={{background:"#FFF3E0",border:"1px solid #FFB74D",borderRadius:12,padding:"10px 14px",marginBottom:14,fontSize:13,color:"#E65100",fontWeight:600}}>⚠️ {aiError}</div>}
+              <div style={{fontSize:15,fontWeight:800,color:"#1B5E20",marginBottom:14}}>✅ Skontroluj a uprav ak treba</div>
+
+              {draft.imageUrl && <div style={{borderRadius:16,overflow:"hidden",height:180,marginBottom:14,background:"#E0E0E0"}}>
+                <img src={draft.imageUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              </div>}
+
+              <div style={{background:"#fff",borderRadius:16,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,0.07)",marginBottom:12}}>
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:11,fontWeight:800,color:"#AAA",letterSpacing:0.8,marginBottom:4}}>NÁZOV PRODUKTU</div>
+                  <input value={draft.name} onChange={e=>setDraft(d=>({...d,name:e.target.value}))}
+                    style={{width:"100%",border:"none",borderBottom:"2px solid #EEE",fontSize:16,fontWeight:700,outline:"none",background:"transparent",padding:"4px 0",fontFamily:"inherit"}}/>
+                </div>
+                <div style={{display:"flex",gap:16}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:11,fontWeight:800,color:"#AAA",letterSpacing:0.8,marginBottom:4}}>CENA (€)</div>
+                    <input type="number" step="0.01" value={draft.unitPrice??""} placeholder="0.00"
+                      onChange={e=>setDraft(d=>({...d,unitPrice:e.target.value?parseFloat(e.target.value):null}))}
+                      style={{width:"100%",border:"none",borderBottom:"2px solid #EEE",fontSize:16,fontWeight:700,outline:"none",background:"transparent",padding:"4px 0",fontFamily:"inherit"}}/>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:11,fontWeight:800,color:"#AAA",letterSpacing:0.8,marginBottom:8}}>POČET</div>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <button onClick={()=>setDraft(d=>({...d,quantity:Math.max(1,d.quantity-1)}))} style={{width:32,height:32,borderRadius:8,border:"2px solid #DDD",background:"#fff",fontSize:18,cursor:"pointer",lineHeight:1}}>−</button>
+                      <span style={{fontSize:20,fontWeight:900,minWidth:28,textAlign:"center"}}>{draft.quantity}</span>
+                      <button onClick={()=>setDraft(d=>({...d,quantity:d.quantity+1}))} style={{width:32,height:32,borderRadius:8,border:"2px solid #DDD",background:"#fff",fontSize:18,cursor:"pointer",lineHeight:1}}>+</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{background:"#fff",borderRadius:16,padding:16,boxShadow:"0 2px 10px rgba(0,0,0,0.07)",marginBottom:16}}>
+                <div style={{fontSize:11,fontWeight:800,color:"#AAA",letterSpacing:0.8,marginBottom:10}}>OBCHOD</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+                  {STORES.map(s=>(
+                    <button key={s.id} onClick={()=>setDraft(d=>({...d,storeId:s.id}))} style={{padding:"7px 15px",borderRadius:20,border:"2px solid",fontFamily:"inherit",
+                      borderColor:draft.storeId===s.id?s.bg:"#DDD",background:draft.storeId===s.id?s.bg:"#F5F5F5",color:draft.storeId===s.id?s.color:"#555",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                      {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>{setDraft(null);setView("list");}} style={{flex:1,padding:14,borderRadius:14,border:"2px solid #DDD",background:"#fff",fontSize:15,fontWeight:700,color:"#666",cursor:"pointer",fontFamily:"inherit"}}>Zrušiť</button>
+                <button onClick={confirmDraft} style={{flex:2,padding:14,borderRadius:14,border:"none",background:"linear-gradient(135deg,#1B5E20,#388E3C)",color:"#fff",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>✓ Pridať do zoznamu</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ZOZNAM */}
+      {view==="list" && (
+        <div style={{padding:"16px 16px 0"}}>
+          {items.length===0 ? (
+            <div style={{textAlign:"center",padding:"60px 20px"}}>
+              <div style={{fontSize:64,marginBottom:14}}>📋</div>
+              <div style={{fontSize:18,fontWeight:800,color:"#333",marginBottom:8}}>Zoznam je prázdny</div>
+              <div style={{fontSize:14,color:"#999",lineHeight:1.7}}>Stlač 📷 a ofoť produkt z letáku,<br/>alebo ho pridaj ručne nižšie.</div>
+            </div>
+          ) : groups.map(({store,rows})=>(
+            <div key={store.id} style={{marginBottom:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                <div style={{background:store.bg,color:store.color,padding:"4px 14px",borderRadius:20,fontSize:13,fontWeight:800}}>{store.name}</div>
+                <div style={{fontSize:13,color:"#888",fontWeight:700}}>{fmt(rows.reduce((s,i)=>s+(i.unitPrice||0)*i.quantity,0))}</div>
+              </div>
+              {rows.map(item=>(
+                <div key={item.id} style={{background:"#fff",borderRadius:16,marginBottom:8,display:"flex",alignItems:"center",padding:"10px 12px 10px 10px",boxShadow:"0 2px 8px rgba(0,0,0,0.06)",opacity:item.checked?0.45:1,transition:"opacity 0.2s",gap:10}}>
+                  {item.imageUrl ? (
+                    <div style={{width:52,height:52,borderRadius:12,overflow:"hidden",flexShrink:0,background:"#EEE"}}>
+                      <img src={item.imageUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    </div>
+                  ) : (
+                    <div style={{width:52,height:52,borderRadius:12,flexShrink:0,background:store.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>🛍️</div>
+                  )}
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:15,fontWeight:700,color:"#222",textDecoration:item.checked?"line-through":"none",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{item.name}</div>
+                    <div style={{fontSize:13,color:"#999",marginTop:2,display:"flex",gap:6}}>
+                      {item.unitPrice!=null && <span style={{fontWeight:700,color:"#2E7D32"}}>{fmt(item.unitPrice)}</span>}
+                      {item.quantity>1 && <span>× {item.quantity} = <b style={{color:"#2E7D32"}}>{fmt(item.unitPrice,item.quantity)}</b></span>}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+                    <button onClick={()=>changeQty(item,-1)} style={{width:28,height:28,borderRadius:8,border:"1.5px solid #DDD",background:"#fff",fontSize:15,cursor:"pointer",lineHeight:1}}>−</button>
+                    <span style={{fontSize:14,fontWeight:800,minWidth:20,textAlign:"center"}}>{item.quantity}</span>
+                    <button onClick={()=>changeQty(item,1)}  style={{width:28,height:28,borderRadius:8,border:"1.5px solid #DDD",background:"#fff",fontSize:15,cursor:"pointer",lineHeight:1}}>+</button>
+                    <button onClick={()=>toggleItem(item)} style={{width:30,height:30,borderRadius:8,border:"none",background:item.checked?"#4CAF50":"#EBEBEB",fontSize:14,cursor:"pointer",marginLeft:2,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {item.checked?"✓":"○"}
+                    </button>
+                    <button onClick={()=>removeItem(item.id)} style={{width:30,height:30,borderRadius:8,border:"none",background:"#FFEBEE",color:"#E53935",fontSize:18,fontWeight:800,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+
+          {items.length>0 && (
+            <div style={{background:"linear-gradient(135deg,#1B5E20,#2E7D32)",borderRadius:18,padding:"16px 20px",color:"#fff",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+              <div>
+                <div style={{fontSize:11,opacity:0.7,fontWeight:700,letterSpacing:0.8}}>CELKOVÁ SUMA</div>
+                <div style={{fontSize:26,fontWeight:900}}>{fmt(total)}</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:11,opacity:0.7,fontWeight:700,letterSpacing:0.8}}>POLOŽIEK</div>
+                <div style={{fontSize:26,fontWeight:900}}>{items.length}</div>
+              </div>
+            </div>
+          )}
+
+          <div style={{background:"#fff",borderRadius:18,padding:18,boxShadow:"0 2px 12px rgba(0,0,0,0.07)",marginBottom:20}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#333",marginBottom:14}}>📱 Pridať z digitálneho letáku</div>
+            <QuickAdd onAdd={addItem}/>
           </div>
         </div>
+      )}
 
-        {/* ── Scanner view ── */}
-        {view === "scanner" && (
-          <div style={{ padding: 20 }} className="slide-in">
-            {extracting ? (
-              <div style={{ textAlign: "center", padding: "50px 0" }}>
-                <div style={{ fontSize: 52, marginBottom: 18 }}>🔍</div>
-                <div style={{ fontSize: 17, fontWeight: 800, color: "#1B5E20", marginBottom: 6 }}>Rozpoznávam produkt...</div>
-                <div style={{ fontSize: 13, color: "#999" }}>AI analyzuje leták</div>
-                <div style={{ marginTop: 22 }}>
-                  <div style={{ width: 220, height: 6, background: "#E0E0E0", borderRadius: 3, margin: "0 auto", overflow: "hidden" }}>
-                    <div style={{ height: "100%", background: "linear-gradient(90deg,#2E7D32,#81C784)", borderRadius: 3, width: "55%", animation: "pulse-bar 1.1s ease-in-out infinite" }} />
-                  </div>
-                </div>
-              </div>
-            ) : draft && (
-              <div>
-                {draft.error && (
-                  <div style={{ background: "#FFF3E0", borderRadius: 12, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: "#E65100", fontWeight: 600 }}>
-                    ⚠️ {draft.error} — uprav údaje ručne
-                  </div>
-                )}
-                <div style={{ fontSize: 16, fontWeight: 800, color: "#1B5E20", marginBottom: 14 }}>✅ Produkt nájdený</div>
-
-                {draft.imageUrl && (
-                  <div style={{ borderRadius: 16, overflow: "hidden", marginBottom: 14, height: 190, background: "#E8E8E8" }}>
-                    <img src={draft.imageUrl} alt="leták" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  </div>
-                )}
-
-                {/* Fields card */}
-                <div style={{ background: "#fff", borderRadius: 16, padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", marginBottom: 12 }}>
-                  <label style={{ fontSize: 11, fontWeight: 800, color: "#aaa", letterSpacing: 0.8 }}>NÁZOV PRODUKTU</label>
-                  <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
-                    style={{ display: "block", width: "100%", border: "none", fontSize: 16, fontWeight: 700, color: "#222", outline: "none", background: "transparent", marginTop: 4, fontFamily: "inherit" }} />
-                  <div style={{ height: 1, background: "#F0F0F0", margin: "12px 0" }} />
-
-                  <div style={{ display: "flex", gap: 16 }}>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 11, fontWeight: 800, color: "#aaa", letterSpacing: 0.8 }}>CENA (€)</label>
-                      <input type="number" step="0.01" min="0" value={draft.price ?? ""} placeholder="0.00"
-                        onChange={e => setDraft(d => ({ ...d, price: e.target.value ? parseFloat(e.target.value) : null }))}
-                        style={{ display: "block", width: "100%", border: "none", fontSize: 16, fontWeight: 700, color: "#222", outline: "none", background: "transparent", marginTop: 4, fontFamily: "inherit" }} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <label style={{ fontSize: 11, fontWeight: 800, color: "#aaa", letterSpacing: 0.8 }}>POČET KUSOV</label>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-                        <button onClick={() => setDraft(d => ({ ...d, quantity: Math.max(1, d.quantity - 1) }))}
-                          style={{ width: 32, height: 32, borderRadius: 8, border: "2px solid #E0E0E0", background: "#fff", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>−</button>
-                        <span style={{ fontSize: 18, fontWeight: 900, minWidth: 26, textAlign: "center" }}>{draft.quantity}</span>
-                        <button onClick={() => setDraft(d => ({ ...d, quantity: d.quantity + 1 }))}
-                          style={{ width: 32, height: 32, borderRadius: 8, border: "2px solid #E0E0E0", background: "#fff", fontSize: 18, cursor: "pointer", lineHeight: 1 }}>+</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Store picker */}
-                <div style={{ background: "#fff", borderRadius: 16, padding: 16, boxShadow: "0 2px 12px rgba(0,0,0,0.07)", marginBottom: 16 }}>
-                  <label style={{ fontSize: 11, fontWeight: 800, color: "#aaa", letterSpacing: 0.8, display: "block", marginBottom: 10 }}>OBCHOD</label>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                    {STORES.map(s => (
-                      <button key={s.id} onClick={() => setDraft(d => ({ ...d, storeId: s.id }))}
-                        style={{ padding: "7px 15px", borderRadius: 20, border: "2px solid", borderColor: draft.storeId === s.id ? s.bg : "#E0E0E0", background: draft.storeId === s.id ? s.bg : "#F5F5F5", color: draft.storeId === s.id ? s.color : "#555", fontSize: 13, fontWeight: 700, cursor: "pointer", transition: "all 0.15s", fontFamily: "inherit" }}>
-                        {s.name}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={() => { setDraft(null); setView("list"); }}
-                    style={{ flex: 1, padding: 14, borderRadius: 14, border: "2px solid #E0E0E0", background: "#fff", fontSize: 15, fontWeight: 700, color: "#666", cursor: "pointer", fontFamily: "inherit" }}>Zrušiť</button>
-                  <button onClick={confirmAdd}
-                    style={{ flex: 2, padding: 14, borderRadius: 14, border: "none", background: "linear-gradient(135deg,#1B5E20,#388E3C)", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer", fontFamily: "inherit" }}>+ Pridať do zoznamu</button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ── List view ── */}
-        {view === "list" && (
-          <div style={{ padding: "16px 16px 0" }}>
-            {items.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "64px 24px" }}>
-                <div style={{ fontSize: 68, marginBottom: 16, lineHeight: 1 }}>📋</div>
-                <div style={{ fontSize: 19, fontWeight: 800, color: "#333", marginBottom: 8 }}>Zoznam je prázdny</div>
-                <div style={{ fontSize: 14, color: "#888", lineHeight: 1.6 }}>Stlač 📷 a ofoť produkt z letáku,<br />alebo ho pridaj ručne nižšie.</div>
-              </div>
-            ) : groups.map(({ store, items: si }) => (
-              <div key={store.id} style={{ marginBottom: 22 }} className="slide-in">
-                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                  <div style={{ background: store.bg, color: store.color, padding: "5px 14px", borderRadius: 20, fontSize: 13, fontWeight: 800 }}>{store.name}</div>
-                  <div style={{ fontSize: 13, color: "#888", fontWeight: 700 }}>
-                    {fmt(si.reduce((s, i) => s + (i.price || 0) * i.quantity, 0))}
-                  </div>
-                </div>
-                {si.map(item => (
-                  <div key={item.id} style={{ background: "#fff", borderRadius: 16, marginBottom: 8, display: "flex", alignItems: "center", padding: "10px 14px 10px 10px", boxShadow: "0 2px 10px rgba(0,0,0,0.06)", opacity: item.checked ? 0.48 : 1, transition: "opacity 0.2s", gap: 11 }}>
-                    {item.imageUrl ? (
-                      <div style={{ width: 54, height: 54, borderRadius: 12, overflow: "hidden", flexShrink: 0 }}>
-                        <img src={item.imageUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      </div>
-                    ) : (
-                      <div style={{ width: 54, height: 54, borderRadius: 12, background: store.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: 24 }}>🛍️</div>
-                    )}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: "#222", textDecoration: item.checked ? "line-through" : "none", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.name}</div>
-                      <div style={{ fontSize: 13, color: "#999", marginTop: 2, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        {item.price != null && <span style={{ fontWeight: 700, color: "#2E7D32" }}>{fmt(item.price)}</span>}
-                        {item.quantity > 1 && <span>× {item.quantity} = <b style={{ color: "#2E7D32" }}>{fmt((item.price || 0) * item.quantity)}</b></span>}
-                      </div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
-                      <button onClick={() => updQty(item.id, -1)} style={{ width: 28, height: 28, borderRadius: 8, border: "1.5px solid #E0E0E0", background: "#fff", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>−</button>
-                      <span style={{ fontSize: 14, fontWeight: 800, minWidth: 20, textAlign: "center" }}>{item.quantity}</span>
-                      <button onClick={() => updQty(item.id, 1)}  style={{ width: 28, height: 28, borderRadius: 8, border: "1.5px solid #E0E0E0", background: "#fff", fontSize: 15, cursor: "pointer", lineHeight: 1 }}>+</button>
-                      <button onClick={() => toggle(item.id)} style={{ width: 30, height: 30, borderRadius: 8, border: "none", background: item.checked ? "#4CAF50" : "#EBEBEB", fontSize: 15, cursor: "pointer", marginLeft: 2, lineHeight: 1 }}>{item.checked ? "✓" : "○"}</button>
-                      <button onClick={() => remove(item.id)} style={{ width: 30, height: 30, borderRadius: 8, border: "none", background: "#FFEBEE", color: "#E53935", fontSize: 17, cursor: "pointer", fontWeight: 800, lineHeight: 1 }}>×</button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ))}
-
-            {/* Total card */}
-            {items.length > 0 && (
-              <div style={{ background: "linear-gradient(135deg,#1B5E20,#2E7D32)", borderRadius: 18, padding: "16px 22px", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-                <div>
-                  <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 700, letterSpacing: 0.8 }}>CELKOVÁ SUMA</div>
-                  <div style={{ fontSize: 26, fontWeight: 900 }}>{fmt(grandTotal)}</div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 11, opacity: 0.7, fontWeight: 700, letterSpacing: 0.8 }}>POLOŽKY</div>
-                  <div style={{ fontSize: 26, fontWeight: 900 }}>{items.length}</div>
-                </div>
-              </div>
-            )}
-
-            {/* Quick add */}
-            <div style={{ background: "#fff", borderRadius: 18, padding: 18, boxShadow: "0 2px 14px rgba(0,0,0,0.07)", marginBottom: 20 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: "#333", marginBottom: 14 }}>📱 Pridať z digitálneho letáku</div>
-              <QuickAdd onAdd={(item) => persistItems([...items, { ...item, id: Date.now(), checked: false }])} />
+      {/* FAB */}
+      {view==="list" && (
+        <div style={{position:"fixed",bottom:26,left:"50%",transform:"translateX(-50%)",display:"flex",gap:14,zIndex:100}}>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+            <div style={{position:"relative",width:68,height:68}}>
+              <div style={{width:68,height:68,borderRadius:"50%",background:"linear-gradient(135deg,#1B5E20,#388E3C)",boxShadow:"0 6px 22px rgba(27,94,32,0.55)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28,pointerEvents:"none"}}>📷</div>
+              <input type="file" accept="image/*" capture="environment" onChange={handleFile}
+                style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%",borderRadius:"50%"}}/>
             </div>
+            <span style={{fontSize:11,fontWeight:800,color:"#fff",background:"rgba(0,0,0,0.4)",borderRadius:7,padding:"2px 8px"}}>Foťiť</span>
           </div>
-        )}
-
-        {/* ── FAB buttons ── */}
-        {view === "list" && (
-          <div style={{ position: "fixed", bottom: 28, left: "50%", transform: "translateX(-50%)", display: "flex", gap: 14, zIndex: 100 }}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-              <button onClick={() => cameraRef.current.click()}
-                style={{ background: "linear-gradient(135deg,#1B5E20,#388E3C)", color: "#fff", border: "none", borderRadius: "50%", width: 68, height: 68, fontSize: 28, cursor: "pointer", boxShadow: "0 6px 22px rgba(27,94,32,0.55)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                📷
-              </button>
-              <span style={{ fontSize: 11, color: "#fff", fontWeight: 800, background: "rgba(0,0,0,0.38)", borderRadius: 8, padding: "2px 8px" }}>Foťiť</span>
+          <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
+            <div style={{position:"relative",width:68,height:68}}>
+              <div style={{width:68,height:68,borderRadius:"50%",border:"2.5px solid #1B5E20",background:"#fff",boxShadow:"0 4px 16px rgba(0,0,0,0.14)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,pointerEvents:"none"}}>🖼️</div>
+              <input type="file" accept="image/*" onChange={handleFile}
+                style={{position:"absolute",inset:0,opacity:0,cursor:"pointer",width:"100%",height:"100%",borderRadius:"50%"}}/>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5 }}>
-              <button onClick={() => galleryRef.current.click()}
-                style={{ background: "#fff", color: "#1B5E20", border: "2.5px solid #1B5E20", borderRadius: "50%", width: 68, height: 68, fontSize: 26, cursor: "pointer", boxShadow: "0 4px 16px rgba(0,0,0,0.13)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                🖼️
-              </button>
-              <span style={{ fontSize: 11, color: "#fff", fontWeight: 800, background: "rgba(0,0,0,0.38)", borderRadius: 8, padding: "2px 8px" }}>Galéria</span>
-            </div>
+            <span style={{fontSize:11,fontWeight:800,color:"#fff",background:"rgba(0,0,0,0.4)",borderRadius:7,padding:"2px 8px"}}>Galéria</span>
           </div>
-        )}
+        </div>
+      )}
+    </div>
+  );
+}
 
-        {/* Hidden file inputs */}
-        <input ref={cameraRef}  type="file" accept="image/*" capture="environment" style={{ display: "none" }} onChange={handleFile} />
-        <input ref={galleryRef} type="file" accept="image/*"                       style={{ display: "none" }} onChange={handleFile} />
-      </div>
-    );
-  }
-
-  ReactDOM.createRoot(document.getElementById("root")).render(<App />);
-</script>
-
-<script>
-  // Register service worker
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js")
-        .then(r => console.log("SW registered:", r.scope))
-        .catch(e => console.warn("SW failed:", e));
-    });
-  }
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
 </script>
 </body>
 </html>
