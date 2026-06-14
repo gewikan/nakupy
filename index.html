@@ -45,10 +45,14 @@ const STORES = [
 ];
 
 const matchStore = t => { if(!t) return null; const l=t.toLowerCase(); return STORES.find(s=>l.includes(s.name.toLowerCase()))||null; };
-const fmt = (p,q=1) => p!=null ? (p*q).toFixed(2).replace(".",",")+" €" : "—";
+const fmt = (p,q=1) => p!=null ? (p*q).toFixed(2).replace(".",",")+" €" : "—";
+const num = p => (typeof p==="number") ? p : (p!=null && p!=="" && !isNaN(parseFloat(p)) ? parseFloat(p) : null);
 
 // ── Odkazy na aktuálne online letáky ─────────────────────────────
-const FLYER_DIRECT = { lidl:"https://www.lidl.sk/c/online-letak/s10008489" };
+const FLYER_DIRECT = {
+  lidl:"https://www.lidl.sk/c/online-letak/s10008489",
+  kaufland:"https://www.kaufland.sk/akcie-ponuky/aktualny-letak.html"
+};
 const flyerUrl = id => {
   if (FLYER_DIRECT[id]) return FLYER_DIRECT[id];
   const s = STORES.find(x=>x.id===id);
@@ -65,13 +69,11 @@ const fbDel  = async path => fetch(`${DB}${path}.json`,{method:"DELETE"});
 function Setup({ onSave }) {
   const [apiKey, setApiKey] = useState("");
   const [err,    setErr]    = useState("");
-
   const save = () => {
     if (!apiKey.trim().startsWith("sk-ant-")) { setErr("Kľúč musí začínať na sk-ant-"); return; }
     localStorage.setItem("nz_api", apiKey.trim());
     onSave(apiKey.trim());
   };
-
   return (
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"32px 24px",background:"#F5F3EF"}}>
       <div style={{fontSize:72,marginBottom:12}}>🛒</div>
@@ -99,62 +101,8 @@ function Setup({ onSave }) {
   );
 }
 
-// ── Rýchle pridanie ─────────────────────────────────────────────
-function QuickAdd({ onAdd }) {
-  const [name,    setName]    = useState("");
-  const [price,   setPrice]   = useState("");
-  const [storeId, setStoreId] = useState("lidl");
-  const [qty,     setQty]     = useState(1);
-
-  const add = () => {
-    if (!name.trim()) return;
-    onAdd({ name:name.trim(), unitPrice:price?parseFloat(price):null, quantity:qty, imageUrl:null, store:STORES.find(s=>s.id===storeId) });
-    setName(""); setPrice(""); setQty(1);
-  };
-
-  const sName = (STORES.find(s=>s.id===storeId)||{}).name;
-
-  return (
-    <div>
-      <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
-        {STORES.map(s=>(
-          <button key={s.id} onClick={()=>setStoreId(s.id)} style={{padding:"5px 12px",borderRadius:16,border:"2px solid",
-            borderColor:storeId===s.id?s.bg:"#DDD",background:storeId===s.id?s.bg:"#F5F5F5",
-            color:storeId===s.id?s.color:"#555",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-            {s.name}
-          </button>
-        ))}
-      </div>
-      {storeId!=="iny" && (
-        <a href={flyerUrl(storeId)} target="_blank" rel="noopener noreferrer"
-          style={{display:"inline-flex",alignItems:"center",gap:6,marginBottom:12,fontSize:12.5,fontWeight:800,color:"#1B5E20",textDecoration:"none",background:"#E8F5E9",padding:"7px 12px",borderRadius:12}}>
-          📄 Otvoriť aktuálny leták {sName}
-        </a>
-      )}
-      <input value={name} onChange={e=>setName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}
-        placeholder="Názov produktu..."
-        style={{width:"100%",padding:"11px 14px",borderRadius:12,border:"1.5px solid #DDD",fontSize:15,marginBottom:8,outline:"none",fontFamily:"inherit"}}/>
-      <div style={{display:"flex",gap:8,marginBottom:10}}>
-        <input type="number" step="0.01" value={price} onChange={e=>setPrice(e.target.value)} placeholder="Cena €"
-          style={{flex:1,padding:"11px 12px",borderRadius:12,border:"1.5px solid #DDD",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
-        <div style={{display:"flex",alignItems:"center",gap:8,background:"#F5F5F5",borderRadius:12,padding:"0 14px"}}>
-          <button onClick={()=>setQty(q=>Math.max(1,q-1))} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",padding:"6px 2px",lineHeight:1}}>−</button>
-          <span style={{fontWeight:800,fontSize:16,minWidth:22,textAlign:"center"}}>{qty}</span>
-          <button onClick={()=>setQty(q=>q+1)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",padding:"6px 2px",lineHeight:1}}>+</button>
-        </div>
-      </div>
-      <button onClick={add} style={{width:"100%",padding:13,borderRadius:12,border:"none",
-        background:name.trim()?"linear-gradient(135deg,#1B5E20,#388E3C)":"#E0E0E0",
-        color:name.trim()?"#fff":"#aaa",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
-        + Pridať do zoznamu
-      </button>
-    </div>
-  );
-}
-
-// ── Karta rozpoznaného produktu (z letáku) ──────────────────────
+// ── Karta rozpoznaného produktu (foto/scan z letáku) ────────────
 function DraftCard({ d, onChange, onAdd }) {
-  const store = STORES.find(s=>s.id===d.storeId) || STORES[STORES.length-1];
   return (
     <div style={{background:"#fff",borderRadius:14,padding:"12px 12px",boxShadow:"0 2px 8px rgba(0,0,0,0.06)",marginBottom:10,opacity:d.added?0.55:1}}>
       <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
@@ -190,6 +138,70 @@ function DraftCard({ d, onChange, onAdd }) {
   );
 }
 
+// ── Akcie z letáku (z Firebase /letaky/<store>) ─────────────────
+function FlyerDeals({ storeId, onAdd, added }) {
+  const [data,    setData]    = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [q,       setQ]       = useState("");
+
+  useEffect(() => {
+    let cancel=false;
+    setData(null); setLoading(true); setQ("");
+    fbGet(`/letaky/${storeId}`)
+      .then(d => { if(!cancel){ setData(d && typeof d==="object" && !d.error ? d : null); setLoading(false); } })
+      .catch(()=> { if(!cancel) setLoading(false); });
+    return ()=>{cancel=true;};
+  }, [storeId]);
+
+  const store = STORES.find(s=>s.id===storeId)||{};
+  if (storeId==="iny") return null;
+
+  if (loading) return <div style={{fontSize:13,color:"#999",padding:"6px 0 12px"}}>Načítavam akcie z letáku…</div>;
+
+  const products = (data && Array.isArray(data.products)) ? data.products : [];
+  if (products.length===0) {
+    return (
+      <div style={{background:"#FAFAF7",border:"1px dashed #D6D6CE",borderRadius:12,padding:"10px 12px",marginBottom:12,fontSize:12.5,color:"#888",lineHeight:1.5}}>
+        Akcie z letáku <b>{store.name}</b> zatiaľ nie sú načítané. Doplnia sa automaticky pri novom letáku — alebo použi 📷/🖼️ nižšie.
+      </div>
+    );
+  }
+
+  const filtered = q ? products.filter(p=>p.name && p.name.toLowerCase().includes(q.toLowerCase())) : products;
+
+  return (
+    <div style={{marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{fontSize:13,fontWeight:800,color:"#1B5E20"}}>🔥 Akcie {store.name} ({products.length})</div>
+        {data.validTo && <div style={{fontSize:11,color:"#999",fontWeight:700}}>platí do {data.validTo}</div>}
+      </div>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Hľadať v letáku…"
+        style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #DDD",fontSize:14,marginBottom:8,outline:"none",fontFamily:"inherit"}}/>
+      <div style={{maxHeight:300,overflowY:"auto",margin:"0 -2px",padding:"0 2px"}}>
+        {filtered.map((p,idx)=>{
+          const key = storeId+"|"+p.name;
+          const isAdded = !!added[key];
+          return (
+            <div key={idx} style={{display:"flex",alignItems:"center",gap:10,background:"#fff",border:"1px solid #EEE",borderRadius:12,padding:"8px 10px",marginBottom:6,opacity:isAdded?0.55:1}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:700,color:"#222",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{p.name}</div>
+                <div style={{fontSize:13,fontWeight:800,color:"#2E7D32",marginTop:1}}>{num(p.price)!=null?fmt(num(p.price)):"—"}{p.unit?` / ${p.unit}`:""}</div>
+              </div>
+              <button onClick={()=>onAdd(p)} disabled={isAdded}
+                style={{flexShrink:0,padding:"8px 12px",borderRadius:10,border:"none",
+                  background:isAdded?"#C8E6C9":"linear-gradient(135deg,#1B5E20,#388E3C)",
+                  color:isAdded?"#2E7D32":"#fff",fontSize:13,fontWeight:800,cursor:isAdded?"default":"pointer",fontFamily:"inherit",whiteSpace:"nowrap"}}>
+                {isAdded?"✓":"+ Pridať"}
+              </button>
+            </div>
+          );
+        })}
+        {filtered.length===0 && <div style={{fontSize:13,color:"#999",padding:"8px 0"}}>Nič sa nenašlo.</div>}
+      </div>
+    </div>
+  );
+}
+
 // ── Hlavná appka ─────────────────────────────────────────────────
 function App() {
   const [apiKey,     setApiKey]     = useState(()=>localStorage.getItem("nz_api")||"");
@@ -202,12 +214,18 @@ function App() {
   const [lastSync,   setLastSync]   = useState(null);
   const [aiError,    setAiError]    = useState("");
 
+  // manuálne pridanie + výber obchodu
+  const [storeId, setStoreId] = useState("lidl");
+  const [mName,   setMName]   = useState("");
+  const [mPrice,  setMPrice]  = useState("");
+  const [mQty,    setMQty]    = useState(1);
+  const [addedFlyer, setAddedFlyer] = useState({});
+
   // ── Sync z Firebase každé 4 sekundy ──────────────────────────
   const loadFromDB = useCallback(async (silent=false) => {
     try {
       if (!silent) setSyncing(true);
       const data = await fbGet("/zoznam");
-      // poistka: zahodíme chybové hlášky aj nekompletné záznamy (proti "NaN €")
       const arr  = (data && typeof data === "object" && !data.error)
         ? Object.values(data).filter(i => i && typeof i === "object" && i.id)
         : [];
@@ -223,38 +241,46 @@ function App() {
     return () => clearInterval(t);
   }, [loadFromDB]);
 
-  // ── CRUD operácie ─────────────────────────────────────────────
+  // ── CRUD ──────────────────────────────────────────────────────
   const addItem = async item => {
     const newItem = { id: Date.now()+"_"+Math.random().toString(36).slice(2), checked:false, ...item };
     await fbPatch("/zoznam", { [newItem.id]: newItem });
     await loadFromDB(true);
     return newItem;
   };
-
   const toggleItem = async item => {
     const updated = { ...item, checked: !item.checked };
     await fbPatch("/zoznam", { [item.id]: updated });
     setItems(p => p.map(i => i.id===item.id ? updated : i));
   };
-
-  const removeItem = async id => {
-    await fbDel(`/zoznam/${id}`);
-    setItems(p => p.filter(i => i.id!==id));
-  };
-
+  const removeItem = async id => { await fbDel(`/zoznam/${id}`); setItems(p => p.filter(i => i.id!==id)); };
   const changeQty = async (item, delta) => {
     const updated = { ...item, quantity: Math.max(1, (item.quantity||1)+delta) };
     await fbPatch("/zoznam", { [item.id]: updated });
     setItems(p => p.map(i => i.id===item.id ? updated : i));
   };
-
   const clearChecked = async () => {
     const checked = items.filter(i=>i.checked);
     for (const i of checked) await fbDel(`/zoznam/${i.id}`);
     setItems(p => p.filter(i=>!i.checked));
   };
 
-  // ── AI analýza obrázka — VIAC produktov naraz ─────────────────
+  // ── Pridať produkt z letáku (Firebase akcie) ──────────────────
+  const addFlyerProduct = async p => {
+    const store = STORES.find(s=>s.id===storeId) || STORES[STORES.length-1];
+    await addItem({ name:p.name, unitPrice:num(p.price), quantity:1, unit:p.unit||"ks", imageUrl:null, store });
+    setAddedFlyer(a => ({...a, [storeId+"|"+p.name]: true}));
+  };
+
+  // ── Manuálne pridanie ─────────────────────────────────────────
+  const addManual = async () => {
+    if (!mName.trim()) return;
+    const store = STORES.find(s=>s.id===storeId);
+    await addItem({ name:mName.trim(), unitPrice:(mPrice?parseFloat(mPrice):null), quantity:mQty, imageUrl:null, store });
+    setMName(""); setMPrice(""); setMQty(1);
+  };
+
+  // ── AI analýza obrázka — VIAC produktov ───────────────────────
   const analyzeImage = async (base64, previewUrl) => {
     setExtracting(true); setView("scanner"); setAiError(""); setDraftList([]); setScanPreview(previewUrl);
     try {
@@ -265,7 +291,7 @@ function App() {
           model:"claude-sonnet-4-6", max_tokens:1500,
           messages:[{role:"user",content:[
             {type:"image",source:{type:"base64",media_type:"image/jpeg",data:base64}},
-            {type:"text",text:`Pozri sa na obrázok letáku (môže to byť celá strana letáku). Vypíš VŠETKY produkty s cenou, ktoré vidíš.\nVráť IBA JSON pole (bez markdown, bez textu navyše):\n[{"name":"slovenský názov produktu","price":1.99,"store":"Lidl","unit":"ks"}]\n- price: akciová cena ako číslo, alebo null ak nie je\n- store: názov obchodu z loga, alebo null\n- unit: ks/kg/l/g/ml alebo null\nAk nevidíš žiadne produkty, vráť prázdne pole [].`}
+            {type:"text",text:`Pozri sa na obrázok letáku (môže to byť celá strana). Vypíš VŠETKY produkty s cenou.\nVráť IBA JSON pole (bez markdown):\n[{"name":"slovenský názov","price":1.99,"store":"Lidl","unit":"ks"}]\n- price: akciová cena ako číslo alebo null\n- store: názov obchodu z loga alebo null\n- unit: ks/kg/l/g/ml alebo null\nAk nevidíš produkty, vráť [].`}
           ]}]
         })
       });
@@ -277,15 +303,11 @@ function App() {
       if (!Array.isArray(parsed)) parsed = [parsed];
       const list = parsed.filter(p=>p && p.name).map((p,idx)=>{
         const store = matchStore(p.store);
-        const price = (typeof p.price === "number") ? p.price : (p.price ? parseFloat(p.price) : null);
-        return { tmpId: Date.now()+"_"+idx, name:String(p.name), unitPrice:(isNaN(price)?null:price), unit:p.unit||"ks", quantity:1, storeId: store?.id || "iny", added:false };
+        return { tmpId: Date.now()+"_"+idx, name:String(p.name), unitPrice:num(p.price), unit:p.unit||"ks", quantity:1, storeId: store?.id || "iny", added:false };
       });
-      if (list.length === 0) setAiError("Nenašiel som žiadne produkty. Skús ostrejší obrázok alebo priblíž produkt.");
+      if (list.length === 0) setAiError("Nenašiel som žiadne produkty. Skús ostrejší obrázok.");
       setDraftList(list);
-    } catch(e) {
-      setAiError(e.message || "Chyba rozpoznávania");
-      setDraftList([]);
-    }
+    } catch(e) { setAiError(e.message || "Chyba rozpoznávania"); setDraftList([]); }
     setExtracting(false);
   };
 
@@ -307,16 +329,12 @@ function App() {
   };
 
   const updateDraft = upd => setDraftList(p => p.map(d => d.tmpId===upd.tmpId ? upd : d));
-
   const addDraft = async d => {
     const store = STORES.find(s=>s.id===d.storeId) || STORES[STORES.length-1];
     await addItem({ name:d.name, unitPrice:d.unitPrice, quantity:d.quantity, unit:d.unit, imageUrl:scanPreview, store });
     setDraftList(p => p.map(x => x.tmpId===d.tmpId ? {...x, added:true} : x));
   };
-
-  const addAllDrafts = async () => {
-    for (const d of draftList) { if (!d.added) await addDraft(d); }
-  };
+  const addAllDrafts = async () => { for (const d of draftList) { if (!d.added) await addDraft(d); } };
 
   // ── Štatistiky ────────────────────────────────────────────────
   const total      = items.reduce((s,i)=>s+(i.unitPrice||0)*(i.quantity||1),0);
@@ -324,6 +342,7 @@ function App() {
   const leftN      = items.length - checkedN;
   const groups     = STORES.map(s=>({store:s,rows:items.filter(i=>i.store?.id===s.id)})).filter(g=>g.rows.length>0);
   const remainingDrafts = draftList.filter(d=>!d.added).length;
+  const sName = (STORES.find(s=>s.id===storeId)||{}).name;
 
   if (!apiKey) return <Setup onSave={setApiKey} />;
 
@@ -349,7 +368,7 @@ function App() {
         </div>
       </div>
 
-      {/* SCANNER — viac produktov */}
+      {/* SCANNER */}
       {view==="scanner" && (
         <div style={{padding:16}}>
           {extracting ? (
@@ -367,36 +386,22 @@ function App() {
                 <button onClick={()=>{setDraftList([]);setScanPreview(null);setView("list");}} style={{background:"none",border:"none",fontSize:14,fontWeight:800,color:"#1B5E20",cursor:"pointer",fontFamily:"inherit"}}>← Späť</button>
                 {draftList.length>0 && <div style={{fontSize:13,color:"#888",fontWeight:700}}>{draftList.length} produktov</div>}
               </div>
-
               {aiError && <div style={{background:"#FFF3E0",border:"1px solid #FFB74D",borderRadius:12,padding:"10px 14px",marginBottom:14,fontSize:13,color:"#E65100",fontWeight:600}}>⚠️ {aiError}</div>}
-
-              {draftList.length>0 && (
-                <div style={{fontSize:14,fontWeight:800,color:"#1B5E20",marginBottom:12}}>🛍️ Ťukni na „Pridať" pri produkte (cenu/počet vieš upraviť)</div>
-              )}
-
+              {draftList.length>0 && <div style={{fontSize:14,fontWeight:800,color:"#1B5E20",marginBottom:12}}>🛍️ Ťukni na „Pridať" pri produkte</div>}
               {scanPreview && draftList.length>0 && (
                 <div style={{borderRadius:14,overflow:"hidden",maxHeight:160,marginBottom:14,background:"#E0E0E0"}}>
                   <img src={scanPreview} alt="" style={{width:"100%",objectFit:"cover",maxHeight:160}}/>
                 </div>
               )}
-
-              {draftList.map(d => (
-                <DraftCard key={d.tmpId} d={d} onChange={updateDraft} onAdd={addDraft}/>
-              ))}
-
-              {draftList.length===0 && !aiError && (
-                <div style={{textAlign:"center",padding:"40px 0",color:"#999",fontSize:14}}>Žiadne produkty.</div>
-              )}
-
+              {draftList.map(d => <DraftCard key={d.tmpId} d={d} onChange={updateDraft} onAdd={addDraft}/>)}
+              {draftList.length===0 && !aiError && <div style={{textAlign:"center",padding:"40px 0",color:"#999",fontSize:14}}>Žiadne produkty.</div>}
               <div style={{display:"flex",gap:10,marginTop:8,marginBottom:24}}>
                 {remainingDrafts>0 && (
                   <button onClick={addAllDrafts} style={{flex:2,padding:14,borderRadius:14,border:"none",background:"linear-gradient(135deg,#1B5E20,#388E3C)",color:"#fff",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
                     ✓ Pridať všetky ({remainingDrafts})
                   </button>
                 )}
-                <button onClick={()=>{setDraftList([]);setScanPreview(null);setView("list");}} style={{flex:1,padding:14,borderRadius:14,border:"2px solid #DDD",background:"#fff",fontSize:15,fontWeight:700,color:"#666",cursor:"pointer",fontFamily:"inherit"}}>
-                  Hotovo
-                </button>
+                <button onClick={()=>{setDraftList([]);setScanPreview(null);setView("list");}} style={{flex:1,padding:14,borderRadius:14,border:"2px solid #DDD",background:"#fff",fontSize:15,fontWeight:700,color:"#666",cursor:"pointer",fontFamily:"inherit"}}>Hotovo</button>
               </div>
             </div>
           )}
@@ -407,10 +412,10 @@ function App() {
       {view==="list" && (
         <div style={{padding:"16px 16px 0"}}>
           {items.length===0 ? (
-            <div style={{textAlign:"center",padding:"60px 20px"}}>
+            <div style={{textAlign:"center",padding:"50px 20px 30px"}}>
               <div style={{fontSize:64,marginBottom:14}}>📋</div>
               <div style={{fontSize:18,fontWeight:800,color:"#333",marginBottom:8}}>Zoznam je prázdny</div>
-              <div style={{fontSize:14,color:"#999",lineHeight:1.7}}>Stlač 📷 a ofoť leták (alebo 🖼️ screenshot online letáku),<br/>AI vypíše produkty a ty ich pridáš ťuknutím.</div>
+              <div style={{fontSize:14,color:"#999",lineHeight:1.7}}>Vyber obchod nižšie a ťukni na akciu z letáku,<br/>alebo ofoť leták cez 📷 / 🖼️.</div>
             </div>
           ) : groups.map(({store,rows})=>(
             <div key={store.id} style={{marginBottom:20}}>
@@ -461,9 +466,50 @@ function App() {
             </div>
           )}
 
+          {/* PRIDAŤ Z LETÁKU */}
           <div style={{background:"#fff",borderRadius:18,padding:18,boxShadow:"0 2px 12px rgba(0,0,0,0.07)",marginBottom:20}}>
-            <div style={{fontSize:14,fontWeight:800,color:"#333",marginBottom:14}}>📱 Pridať z digitálneho letáku</div>
-            <QuickAdd onAdd={addItem}/>
+            <div style={{fontSize:14,fontWeight:800,color:"#333",marginBottom:12}}>📱 Pridať z letáku — vyber obchod</div>
+
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:10}}>
+              {STORES.map(s=>(
+                <button key={s.id} onClick={()=>setStoreId(s.id)} style={{padding:"5px 12px",borderRadius:16,border:"2px solid",
+                  borderColor:storeId===s.id?s.bg:"#DDD",background:storeId===s.id?s.bg:"#F5F5F5",
+                  color:storeId===s.id?s.color:"#555",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                  {s.name}
+                </button>
+              ))}
+            </div>
+
+            {/* Akcie z letáku (Firebase) */}
+            <FlyerDeals storeId={storeId} onAdd={addFlyerProduct} added={addedFlyer}/>
+
+            {storeId!=="iny" && (
+              <a href={flyerUrl(storeId)} target="_blank" rel="noopener noreferrer"
+                style={{display:"inline-flex",alignItems:"center",gap:6,marginBottom:14,fontSize:12.5,fontWeight:800,color:"#1B5E20",textDecoration:"none",background:"#E8F5E9",padding:"7px 12px",borderRadius:12}}>
+                📄 Otvoriť celý leták {sName}
+              </a>
+            )}
+
+            <div style={{borderTop:"1px solid #EEE",paddingTop:12}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#AAA",letterSpacing:0.5,marginBottom:8}}>ALEBO PRIDAŤ RUČNE</div>
+              <input value={mName} onChange={e=>setMName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addManual()}
+                placeholder="Názov produktu..."
+                style={{width:"100%",padding:"11px 14px",borderRadius:12,border:"1.5px solid #DDD",fontSize:15,marginBottom:8,outline:"none",fontFamily:"inherit"}}/>
+              <div style={{display:"flex",gap:8,marginBottom:10}}>
+                <input type="number" step="0.01" value={mPrice} onChange={e=>setMPrice(e.target.value)} placeholder="Cena €"
+                  style={{flex:1,padding:"11px 12px",borderRadius:12,border:"1.5px solid #DDD",fontSize:15,outline:"none",fontFamily:"inherit"}}/>
+                <div style={{display:"flex",alignItems:"center",gap:8,background:"#F5F5F5",borderRadius:12,padding:"0 14px"}}>
+                  <button onClick={()=>setMQty(q=>Math.max(1,q-1))} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",padding:"6px 2px",lineHeight:1}}>−</button>
+                  <span style={{fontWeight:800,fontSize:16,minWidth:22,textAlign:"center"}}>{mQty}</span>
+                  <button onClick={()=>setMQty(q=>q+1)} style={{background:"none",border:"none",fontSize:20,cursor:"pointer",padding:"6px 2px",lineHeight:1}}>+</button>
+                </div>
+              </div>
+              <button onClick={addManual} style={{width:"100%",padding:13,borderRadius:12,border:"none",
+                background:mName.trim()?"linear-gradient(135deg,#1B5E20,#388E3C)":"#E0E0E0",
+                color:mName.trim()?"#fff":"#aaa",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
+                + Pridať do zoznamu
+              </button>
+            </div>
           </div>
         </div>
       )}
