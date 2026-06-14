@@ -51,7 +51,7 @@ const num = p => (typeof p==="number") ? p : (p!=null && p!=="" && !isNaN(parseF
 // ── Odkazy na aktuálne online letáky ─────────────────────────────
 const FLYER_DIRECT = {
   lidl:"https://www.lidl.sk/c/online-letak/s10008489",
-  kaufland:"https://www.kaufland.sk/akcie-ponuky/aktualny-letak.html"
+  kaufland:"https://predajne.kaufland.sk/aktualna-ponuka/letak.html"
 };
 const flyerUrl = id => {
   if (FLYER_DIRECT[id]) return FLYER_DIRECT[id];
